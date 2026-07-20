@@ -1,4 +1,5 @@
 #include "Combat/MYPROJ2Weapon.h"
+#include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
@@ -21,18 +22,23 @@ AMYPROJ2Weapon::AMYPROJ2Weapon()
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Mesh->SetGenerateOverlapEvents(false);
 
+	Muzzle = CreateDefaultSubobject<USceneComponent>(TEXT("Muzzle"));
+	Muzzle->SetupAttachment(Root);
+
 	// M2 placeholder: use a simple box mesh until real weapon art lands.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(
 		TEXT("/Engine/BasicShapes/Cube.Cube"));
 	if (CubeMesh.Succeeded())
 	{
 		Mesh->SetStaticMesh(CubeMesh.Object);
-		// Scale to roughly pistol proportions: X=barrel (long), Y/Z=grip.
-		Mesh->SetRelativeScale3D(FVector(0.4f, 0.05f, 0.05f));
-		// Offset: forward 40cm, right 15cm, down 30cm so it reads as held at
-		// hip/thigh level rather than floating at chest/head height.
-		Mesh->SetRelativeLocation(FVector(40.f, 15.f, -30.f));
+		// Placeholder rifle: local X is the barrel axis. Keep it at waist height
+		// and slightly to the character's right until a real hand socket exists.
+		Mesh->SetRelativeScale3D(FVector(0.55f, 0.06f, 0.06f));
+		Mesh->SetRelativeLocation(FVector(35.f, 18.f, -25.f));
 	}
+
+	// Cube length is 55cm and centred at X=35, so its forward face is X=62.5.
+	Muzzle->SetRelativeLocation(FVector(62.5f, 18.f, -25.f));
 }
 
 void AMYPROJ2Weapon::AttachToOwner()
@@ -71,11 +77,9 @@ void AMYPROJ2Weapon::AttachToOwner()
 
 FVector AMYPROJ2Weapon::GetMuzzleLocation() const
 {
-	if (Mesh)
+	if (Muzzle)
 	{
-		// Muzzle = forward edge of the mesh bounds.
-		const FBoxSphereBounds Bounds = Mesh->CalcBounds(Mesh->GetComponentTransform());
-		return Bounds.Origin + Mesh->GetForwardVector() * Bounds.BoxExtent.Y;
+		return Muzzle->GetComponentLocation();
 	}
 	return GetActorLocation();
 }

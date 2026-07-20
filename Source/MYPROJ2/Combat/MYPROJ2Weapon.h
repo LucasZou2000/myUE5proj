@@ -5,6 +5,7 @@
 #include "MYPROJ2Weapon.generated.h"
 
 class UStaticMeshComponent;
+class USceneComponent;
 
 /**
  * Visible weapon actor. Owned by the Character; spawned by CombatComponent.
@@ -37,6 +38,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<UStaticMeshComponent> Mesh;
+
+	/** Explicit muzzle transform. Gameplay traces and cosmetic tracers share this point. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	TObjectPtr<USceneComponent> Muzzle;
 
 	/** Socket name on the Character's skeletal mesh to attach to. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")

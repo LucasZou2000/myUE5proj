@@ -75,10 +75,13 @@ AMYPROJ2CharacterBase::AMYPROJ2CharacterBase()
 	if (PlaceholderMesh.Succeeded())
 	{
 		GetMesh()->SetSkeletalMesh(PlaceholderMesh.Object);
-		// SkeletalCube is 100cm; scale to ~1.8x to match the 96cm capsule half-height
-		// and drop it so its feet sit at the capsule bottom.
+		// SkeletalCube's actual reference bounds are about 25.2cm high with its
+		// origin at the bottom (verified through SkeletalMeshTools). Scale it to a
+		// roughly 180cm tall, 63cm wide placeholder and align its feet with the
+		// bottom of the 192cm capsule. The old 1.92 Z scale produced a 48cm pawn,
+		// which made the correctly waist-height weapon look like it floated overhead.
 		GetMesh()->SetRelativeLocation(FVector(0.f, 0.f, -96.f));
-		GetMesh()->SetRelativeScale3D(FVector(0.9f, 0.9f, 1.92f));
+		GetMesh()->SetRelativeScale3D(FVector(2.5f, 2.5f, 7.15f));
 	}
 
 	// Interaction driver.

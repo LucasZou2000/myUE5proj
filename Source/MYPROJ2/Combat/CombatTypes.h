@@ -10,8 +10,8 @@
  *   - FFiringContext travels Server → owning Client (Montage) and Server → all (multicast FX).
  *   - FFireRejectionInfo travels Server → owning Client only.
  *   - FFireStartInfo travels owning Client → Server only.
- *   - Server never sends a Transform back for correction. Local fire origin is trusted
- *     within MaxFireOriginTolerance; montage relies on the aim yaw pipeline from M1.
+ *   - Server validates local fire origin within MaxFireOriginTolerance and derives
+ *     the authoritative muzzle from its replicated Weapon actor.
  */
 
 UENUM(BlueprintType)
@@ -37,9 +37,6 @@ struct MYPROJ2_API FFireStartInfo
 
 	UPROPERTY(BlueprintReadOnly, Category = "Combat")
 	FVector FireDirection = FVector::ForwardVector;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Combat")
-	FVector MuzzleSocket = FVector::ZeroVector;
 };
 
 /** Server → owning Client. Authoritative explanation for a rejected trigger. */

@@ -35,6 +35,7 @@ void UCombatComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 
 	// Per m2-combat.md: CurrentAmmo is owner-only.
 	DOREPLIFETIME_CONDITION(UCombatComponent, CurrentAmmo, COND_OwnerOnly);
+	DOREPLIFETIME(UCombatComponent, Weapon);
 }
 
 void UCombatComponent::EnsureWeaponSpawned()
@@ -82,7 +83,12 @@ void UCombatComponent::TryFire()
 		return;
 	}
 
-	// Cursor target on the ground plane (same channel M1 uses for aim focus).
+	// Use the replicated weapon muzzle when available. The fallback matches the
+	// placeholder weapon's relative muzzle closely enough during initial replication.
+	const FVector MuzzleLocation = Weapon
+		? Weapon->GetMuzzleLocation()
+		: Owner->GetActorTransform().TransformPosition(FVector(62.5f, 18.f, -25.f));
+
 	FHitResult CursorHit;
 	const bool bHasCursorTarget = PC->GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
 
@@ -91,13 +97,23 @@ void UCombatComponent::TryFire()
 	// not on the authoritative trace origin.
 	const FVector FireOrigin = Owner->GetActorLocation();
 
-	// FireDirection: horizontal vector toward the cursor target. If the cursor
-	// is not over anything traceable, fall back to the actor's current facing.
+	// Damageable targets use the actual 3D cursor impact, allowing targets above
+	// or below the shooter to be hit. Ground/world aiming remains horizontal so
+	// clicking nearby floor does not immediately drive the shot into the ground.
 	FVector FireDirection;
 	if (bHasCursorTarget)
 	{
-		FVector ToTarget = CursorHit.ImpactPoint - FireOrigin;
-		ToTarget.Z = 0.f; // M2 hitscan is horizontal; vertical aim is a M3+ concern.
+		FVector AimPoint = CursorHit.ImpactPoint;
+		const AActor* CursorActor = CursorHit.GetActor();
+		const bool bDamageableTarget = CursorActor
+			&& CursorActor != Owner
+			&& CursorActor->FindComponentByClass<UHealthComponent>();
+		if (!bDamageableTarget)
+		{
+			AimPoint.Z = MuzzleLocation.Z;
+		}
+
+		FVector ToTarget = AimPoint - MuzzleLocation;
 		FireDirection = ToTarget.GetSafeNormal();
 		if (FireDirection.IsNearlyZero())
 		{
@@ -112,11 +128,6 @@ void UCombatComponent::TryFire()
 	FFireStartInfo StartInfo;
 	StartInfo.FireOrigin = FireOrigin;
 	StartInfo.FireDirection = FireDirection;
-	// M2: use FireOrigin as the muzzle — the placeholder weapon mesh has no
-	// hand_r socket on the skeletal cube, so GetMuzzleLocation() returns an
-	// unreliable point tied to the bone root orientation. Real muzzle sockets
-	// arrive with real weapon art in M3+.
-	StartInfo.MuzzleSocket = FireOrigin;
 
 	ServerTryFire(StartInfo);
 }
@@ -193,8 +204,9 @@ void UCombatComponent::ExecuteFire(const FFireStartInfo& StartInfo)
 	CurrentAmmo = FMath::Max(0, CurrentAmmo - 1);
 	LastAcceptedFireTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 
-	// Hitscan from the authoritative actor origin (matches client TryFire).
-	const FVector TraceStart = Owner->GetActorLocation();
+	// The Server derives the gameplay origin from its weapon. The client-supplied
+	// muzzle is presentation/debug data only and cannot move the authoritative trace.
+	const FVector TraceStart = Weapon ? Weapon->GetMuzzleLocation() : Owner->GetActorLocation();
 	const FVector TraceEnd = TraceStart + StartInfo.FireDirection * WeaponData->Range;
 
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(MYPROJ2FireTrace), /*bTraceComplex=*/false, Owner);
@@ -223,7 +235,7 @@ void UCombatComponent::ExecuteFire(const FFireStartInfo& StartInfo)
 	FFiringContext Ctx;
 	Ctx.FireOrigin = TraceStart;
 	Ctx.FireDirection = StartInfo.FireDirection;
-	Ctx.MuzzleSocket = StartInfo.MuzzleSocket;
+	Ctx.MuzzleSocket = TraceStart;
 	Ctx.FireRate = WeaponData->FireRate;
 	Ctx.AmmoAfterShot = CurrentAmmo;
 

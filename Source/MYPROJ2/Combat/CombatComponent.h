@@ -93,8 +93,8 @@ protected:
 	/** Server-only: spawn weapon if not yet spawned. */
 	void EnsureWeaponSpawned();
 
-	/** Cached weapon actor; set by EnsureWeaponSpawned on Server, replicated via Owner. */
-	UPROPERTY()
+	/** Current weapon. Replicated so the owning client can build aim from the same muzzle. */
+	UPROPERTY(Replicated)
 	TObjectPtr<AMYPROJ2Weapon> Weapon;
 
 	/** Server-side timestamp of the most recent accepted fire, for rate limiting. */
