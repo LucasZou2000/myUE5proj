@@ -116,3 +116,40 @@ Known issues:
 Next:
 - Implement and fully validate `Docs/technical/m0-network-foundation.md`.
 
+## 2026-07-20 21:00 - Kimi - M0 / network foundation
+
+Status: PARTIAL
+
+Changed:
+- `Source/MYPROJ2/Network/MYPROJ2NetworkTypes.h`: added `ERaidPhase`, `EPlayerLifeState` enums + declared `LogMYPROJ2Net/Interaction/Combat` log categories.
+- `Source/MYPROJ2/Network/MYPROJ2NetworkSettings.h/.cpp`: `UDeveloperSettings` subclass holding `AimSendRateHz/MaxInteractDistance/MaxFireOriginError/MaxAimErrorDegrees` from network-contracts.json.
+- `Source/MYPROJ2/Framework/MYPROJ2GameState.h/.cpp`: replicated `RaidPhase` (with `OnRep_RaidPhase`) and `PhaseEndServerTime`; authority-only `AuthoritySetRaidPhase`.
+- `Source/MYPROJ2/Framework/MYPROJ2PlayerState.h/.cpp`: replicated `RaidPlayerId` (FGuid) and `LifeState` (with `OnRep_LifeState`); server-side `AuthorityAssignRaidPlayerId`/`AuthoritySetLifeState`.
+- `Source/MYPROJ2/MYPROJ2GameMode.h/.cpp`: wired `GameStateClass`/`PlayerStateClass`; `BeginPlay` initialises phase to `Lobby`; `PostLogin` assigns `RaidPlayerId` and logs join; `Logout` logs leave; `SetRaidPhase` authority facade.
+- `Source/MYPROJ2/MYPROJ2Character.cpp`: explicitly enabled `bReplicates=true` + `SetReplicateMovement(true)`; native CharacterMovement untouched.
+- `Source/MYPROJ2/MYPROJ2.cpp`: defined the three new log categories.
+- `Source/MYPROJ2/MYPROJ2.Build.cs`: added `DeveloperSettings` module dependency (required by `UDeveloperSettings`).
+- `Content/Raid/Blueprints/BP_RaidGameMode`: BP derived from `AMYPROJ2GameMode`; CDO pins `DefaultPawnClass=BP_TopDownCharacter`, `PlayerControllerClass=BP_TopDownController`, `GameStateClass=MYPROJ2GameState`, `PlayerStateClass=MYPROJ2PlayerState`.
+- `Content/Raid/Maps/L_Test_Network`: duplicated from `Lvl_TopDown`; added 3 extra `PlayerStart` actors (total 4 at (0,0),(600,0),(0,600),(600,600) z=302); WorldSettings `defaultGameMode = BP_RaidGameMode`.
+
+Contracts:
+- `ERaidPhase`, `EPlayerLifeState` enums (Blueprint-accessible) introduced.
+- Replicated properties: `AMYPROJ2GameState::RaidPhase` (OnRep), `PhaseEndServerTime`, `AMYPROJ2PlayerState::RaidPlayerId`, `LifeState` (OnRep).
+- `AMYPROJ2GameMode::SetRaidPhase` Blueprint-callable authority entry point.
+- New log categories `LogMYPROJ2Net`, `LogMYPROJ2Interaction`, `LogMYPROJ2Combat`.
+- New config section `[MYPROJ2.NetworkSettings]` (Game.ini) via `UDeveloperSettings` subclass; defaults match `network-contracts.json`.
+- No custom Transform RPC; movement remains native CharacterMovement replication.
+- New assets: `/Game/Raid/Blueprints/BP_RaidGameMode`, `/Game/Raid/Maps/L_Test_Network`.
+
+Validation:
+- `Build.bat MYPROJ2Editor Win64 Development -waitmutex` → ExitCode=0 after adding `DeveloperSettings` to `MYPROJ2.Build.cs`. Initial Live Coding compile failed (LNK2019 on new files) because Live Coding cannot pick up new build rules without a full UBT re-run; resolved via full rebuild with editor closed.
+- PIE topology: not yet run. Two-player Listen Server PIE, phase replication, movement visibility, late-join durability, and disconnect cleanup all still require manual validation.
+
+Known issues:
+- `BP_RaidGameMode` still references template `BP_TopDownCharacter`/`BP_TopDownController` for Pawn/Controller. Acceptable for M0 (raid-specific Character/Controller is M1 scope), but the asset will need re-pointing when M1 introduces a dedicated pawn.
+- `L_Test_Network` retains `Lvl_TopDown` lighting/navmesh; spawn points are rough and not tuned for any specific raid layout. Sufficient for network bring-up only.
+- Live Coding gotcha recorded: new .cpp files require a full Build.bat run, not just Ctrl+Alt+F11. Logged here so the next agent does not repeat the loop.
+
+Next:
+- Lucas runs PIE: 2 players, Play As Listen Server, map `L_Test_Network`. Verify host+client movement visibility, join log, and clean disconnect. Then trigger a phase change via console (`ke * SetRaidPhase InRaid 0`) or a debug key and confirm clients see `RaidPhase` exactly once via `OnRep_RaidPhase` log.
+
