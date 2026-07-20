@@ -9,6 +9,8 @@
 class UCameraComponent;
 class USpringArmComponent;
 class UInteractionComponent;
+class UCombatComponent;
+class UHealthComponent;
 class UDecalComponent;
 class UNiagaraSystem;
 struct FInputActionValue;
@@ -57,6 +59,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	UInteractionComponent* GetInteractionComponent() const { return InteractionComponent; }
 
+	/** Returns the combat component (M2). */
+	UFUNCTION(BlueprintPure, Category = "Combat")
+	UCombatComponent* GetCombatComponent() const { return CombatComponent; }
+
+	/** Returns the health component (M2). */
+	UFUNCTION(BlueprintPure, Category = "Combat")
+	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
+
 	/** Last aim yaw (degrees) applied to the capsule on the Server / replicated to proxies. */
 	UFUNCTION(BlueprintPure, Category = "Aim")
 	float GetServerAimYaw() const { return ServerAimYaw; }
@@ -68,6 +78,9 @@ protected:
 
 	/** Bound to IA_Interact (Digital). */
 	void OnInteractInput(const FInputActionValue& Value);
+
+	/** Bound to IA_Fire (Digital). M2. */
+	void OnFireInput(const FInputActionValue& Value);
 
 	/** Owning client: compute world-space cursor location and drive local visual root. Returns false if cursor not over floor. */
 	bool SampleCursorWorldLocation(FVector& OutWorldLocation) const;
@@ -99,6 +112,14 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInteractionComponent> InteractionComponent;
 
+	/** Combat validation + ammo (M2). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UCombatComponent> CombatComponent;
+
+	/** Replicated health pool (M2). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UHealthComponent> HealthComponent;
+
 	/** Server-authoritative aim yaw (degrees). Replicated to simulated proxies. */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Aim", meta = (AllowPrivateAccess = "true"))
 	float ServerAimYaw = 0.0f;
@@ -124,4 +145,8 @@ public:
 	/** Enhanced Input action: interact (Digital). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<UInputAction> InteractAction;
+
+	/** Enhanced Input action: fire weapon (Digital). M2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> FireAction;
 };

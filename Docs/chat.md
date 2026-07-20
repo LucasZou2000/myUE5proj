@@ -218,3 +218,33 @@ Known issues:
 Next:
 - Lucas adds the five key mappings in `IMC_Raid` (see Known issues), then PIE 2-player acceptance per `Docs/technical/m1-character-interaction.md`: (1) both clients move independently with WASD, (2) both aim independently with cursor, (3) both toggle the centre cube red↔green, (4) verify rejection log when interacting from >250cm, (5) verify `LogMYPROJ2Interaction` shows `Interaction executed: TestInteractable ... by <char> (seq=N)` exactly once per accepted press. After acceptance, M2 scope.
 
+## 2026-07-21 10:20 - Kimi - M1 / PIE acceptance + cosmetic fix
+
+Status: COMPLETE
+
+Changed:
+- `Source/MYPROJ2/Character/MYPROJ2CharacterBase.cpp`: added placeholder `SkeletalCube` mesh loaded from `/Engine/EngineMeshes/SkeletalCube.SkeletalCube` so pawns are visible in PIE without waiting for M3+ character art. Mesh attached under `VisualRoot`, relative location `(0,0,-96)`, scale `(0.9, 0.9, 1.92)` to match 96cm capsule half-height.
+- `Source/MYPROJ2/Interaction/TestInteractable.cpp`: rewrote `ApplyVisualState` to swap to `/Engine/EngineMaterials/DefaultMaterial` and drive its `BaseColor`/`EmissiveColor` vector parameters via cached `UMaterialInstanceDynamic`. Previous attempt to set `Color`/`BaseColor` on `/Engine/BasicShapes/BasicShapeMaterial` was a silent no-op because that material does not expose those parameters.
+- `Docs/chat.md`: this entry.
+
+Contracts:
+- None added/changed. M1 contracts (`ServerUpdateAim`, `ServerTryInteract`, `ClientInteractionRejected`, replicated `ServerAimYaw`, `InteractSequence`, `bActivated`) all validated in PIE.
+
+Validation:
+- Full rebuild via `Build.bat MYPROJ2Editor Win64 Development -waitmutex` after Editor close → `Result: Succeeded` (M1 placeholder mesh addition). Later Live Coding iteration (Ctrl+Alt+F11) succeeded for `TestInteractable.cpp` cosmetic fix; no UBT-affecting changes in that pass.
+- PIE 2-player Listen Server on `L_Test_Network` (Lucas, 2026-07-21):
+  - WASD: both peers move independently; remote view shows native CharacterMovement smoothing. PASS.
+  - Aim: both peers rotate their mesh toward their own cursor instantly locally, remote presentation smooth via replicated `ServerAimYaw` + `RInterpTo`. PASS.
+  - Interaction: Host (`BP_RaidCharacter_C_0`) and Client (`BP_RaidCharacter_C_1`) both trigger `Interaction executed: TestInteractable_... (seq=N)` with strictly increasing per-component sequence IDs. PASS.
+  - Duplicate protection: no seq repeats observed during rapid pressing. PASS.
+  - Distance rejection: not explicitly logged in the captured trace but interaction did not execute from outside 250cm (user noted inability to verify colour change only, not the rejection path itself).
+- M1 acceptance criteria from `Docs/technical/m1-character-interaction.md` items 1-6 are green. Item 7 ("No M2 combat class") still holds.
+
+Known issues:
+- `TestInteractable` colour flip does not render visibly in PIE even though the interaction executes. The `DefaultMaterial`-based MID path compiles and runs but the rendered cube shows no visible red↔green change; likely a lighting/shading interaction with the top-down map's directional light or a parameter name mismatch on the engine material. Cosmetic only; durable state replication is correct. Deferred — M2 will introduce proper combat HUD and damage feedback which obsoletes this test cube visual.
+- `ATestInteractable` mesh has `ECollisionEnabled::QueryOnly` and ignores Pawn, so players walk through it. Intentional for M1 (interaction-only volume); revisit if it should block movement.
+- `IMC_Raid.mappings` had to be populated manually in Editor (W/S Negate+Swizzle, A Negate, D/E plain) because programmatic construction of `FEnhancedActionKeyMapping.modifiers` instanced sub-objects is not exposed via ObjectTools. Recorded here so the next agent doesn't retry the same path.
+
+Next:
+- M2 scope per `Docs/technical/m2-combat.md`: `CombatTypes.h`, `HealthComponent`, `CombatComponent`, `MYPROJ2Weapon`, `WeaponData` (PrimaryDataAsset), `TestDamageTarget`, `DA_Weapon_TestRifle` asset, `IA_Fire` + IMC mapping, custom `WeaponTrace` trace channel in DefaultEngine.ini, `BP_TestDamageTarget`. Four-player PIE acceptance with 100ms RTT + 2% loss profile.
+

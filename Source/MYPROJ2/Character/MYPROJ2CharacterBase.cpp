@@ -2,6 +2,8 @@
 
 #include "Character/MYPROJ2CharacterBase.h"
 #include "Interaction/InteractionComponent.h"
+#include "Combat/CombatComponent.h"
+#include "Combat/HealthComponent.h"
 #include "Network/MYPROJ2NetworkTypes.h"
 #include "Network/MYPROJ2NetworkSettings.h"
 #include "Camera/CameraComponent.h"
@@ -28,6 +30,10 @@ AMYPROJ2CharacterBase::AMYPROJ2CharacterBase()
 
 	// Capsule.
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	// M2: capsule blocks Visibility so other players' hitscan can hit us.
+	// (Default pawn capsule ignores Visibility for the template's mouse-picking
+	// scenario; we explicitly enable it here for combat.)
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 
 	// Rotation model: capsule yaw is driven by ServerAimYaw (server-authoritative),
 	// not by movement. Visual root yaws instantly on the owning client and smoothly
@@ -77,6 +83,10 @@ AMYPROJ2CharacterBase::AMYPROJ2CharacterBase()
 
 	// Interaction driver.
 	InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
+
+	// M2: combat + health.
+	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("CombatComponent"));
+	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 }
 
 void AMYPROJ2CharacterBase::BeginPlay()
@@ -105,6 +115,10 @@ void AMYPROJ2CharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		{
 			EIC->BindAction(InteractAction, ETriggerEvent::Started, this, &AMYPROJ2CharacterBase::OnInteractInput);
 		}
+		if (FireAction)
+		{
+			EIC->BindAction(FireAction, ETriggerEvent::Started, this, &AMYPROJ2CharacterBase::OnFireInput);
+		}
 	}
 }
 
@@ -129,6 +143,14 @@ void AMYPROJ2CharacterBase::OnInteractInput(const FInputActionValue& Value)
 	if (InteractionComponent)
 	{
 		InteractionComponent->TryInteract();
+	}
+}
+
+void AMYPROJ2CharacterBase::OnFireInput(const FInputActionValue& Value)
+{
+	if (CombatComponent)
+	{
+		CombatComponent->TryFire();
 	}
 }
 
