@@ -3,83 +3,41 @@
 #pragma once
 
 #include "CoreMinimal.h"
-//#include "Templates/SubclassOf.h"
 #include "GameFramework/PlayerController.h"
 #include "MYPROJ2PlayerController.generated.h"
 
-class UNiagaraSystem;
 class UInputMappingContext;
-class UInputAction;
-class UPathFollowingComponent;
-
-DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
 /**
- *  Player controller for a top-down perspective game.
- *  Implements point and click based controls
+ * Top-down player controller (M1).
+ *
+ * WASD movement and cursor-derived aim are handled by the possessed Character
+ * (see AMYPROJ2CharacterBase). This controller only manages the Enhanced Input
+ * Mapping Context and cursor visibility. Click-to-move has been removed.
  */
 UCLASS(abstract)
-class AMYPROJ2PlayerController : public APlayerController
+class MYPROJ2_API AMYPROJ2PlayerController : public APlayerController
 {
 	GENERATED_BODY()
 
 protected:
 
-	/** Component used for moving along a NavMesh path. */
-	UPROPERTY(VisibleDefaultsOnly, Category = AI)
-	TObjectPtr<UPathFollowingComponent> PathFollowingComponent;
-
-	/** Time Threshold to know if it was a short press */
-	UPROPERTY(EditAnywhere, Category="Input")
-	float ShortPressThreshold;
-
-	/** FX Class that we will spawn when clicking */
-	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UNiagaraSystem> FXCursor;
-
-	/** MappingContext */
-	UPROPERTY(EditAnywhere, Category="Input")
+	/** Input Mapping Context to apply on the local player. */
+	UPROPERTY(EditAnywhere, Category = "Input")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
-	
-	/** Jump Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> SetDestinationClickAction;
 
-	/** Jump Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
-	TObjectPtr<UInputAction> SetDestinationTouchAction;
+	/** True if the controlled pawn should show a cursor decal under the mouse. */
+	UPROPERTY(EditAnywhere, Category = "Input")
+	bool bShowCursorDecal = true;
 
-	/** True if the controlled character should navigate to the mouse cursor. */
-	uint32 bMoveToMouseCursor : 1;
+	/** BeginPlay override */
+	virtual void BeginPlay() override;
 
-	/** Set to true if we're using touch input */
-	uint32 bIsTouch : 1;
-
-	/** Saved location of the character movement destination */
-	FVector CachedDestination;
-
-	/** Time that the click input has been pressed */
-	float FollowTime = 0.0f;
+	/** Setup input bindings */
+	virtual void SetupInputComponent() override;
 
 public:
 
 	/** Constructor */
 	AMYPROJ2PlayerController();
-
-protected:
-
-	/** Initialize input bindings */
-	virtual void SetupInputComponent() override;
-	
-	/** Input handlers */
-	void OnInputStarted();
-	void OnSetDestinationTriggered();
-	void OnSetDestinationReleased();
-	void OnTouchTriggered();
-	void OnTouchReleased();
-
-	/** Helper function to get the move destination */
-	void UpdateCachedDestination();
 };
-
-

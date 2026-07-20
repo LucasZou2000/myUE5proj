@@ -154,6 +154,10 @@
 				"Linux",
 				"Mac"
 			]
+		},
+		{
+			"Name": "MetaHumanCharacterUAF",
+			"Enabled": true
 		}
 	]
 }

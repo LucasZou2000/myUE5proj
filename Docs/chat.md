@@ -118,7 +118,7 @@ Next:
 
 ## 2026-07-20 21:00 - Kimi - M0 / network foundation
 
-Status: PARTIAL
+Status: COMPLETE
 
 Changed:
 - `Source/MYPROJ2/Network/MYPROJ2NetworkTypes.h`: added `ERaidPhase`, `EPlayerLifeState` enums + declared `LogMYPROJ2Net/Interaction/Combat` log categories.
@@ -143,7 +143,9 @@ Contracts:
 
 Validation:
 - `Build.bat MYPROJ2Editor Win64 Development -waitmutex` → ExitCode=0 after adding `DeveloperSettings` to `MYPROJ2.Build.cs`. Initial Live Coding compile failed (LNK2019 on new files) because Live Coding cannot pick up new build rules without a full UBT re-run; resolved via full rebuild with editor closed.
-- PIE topology: not yet run. Two-player Listen Server PIE, phase replication, movement visibility, late-join durability, and disconnect cleanup all still require manual validation.
+- PIE 2-player Listen Server on `L_Test_Network` (Lucas, 2026-07-20): join log visible, movement visible both directions via native CharacterMovement, clean disconnect logged, no RPC ownership / replication / Blueprint-parent warnings.
+- Phase replication validated via console `ke * SetRaidPhase InRaid 0`: host and client logs both show `RaidPhase changed: 0 -> 2`, exactly one OnRep per endpoint, no per-frame spam.
+- Manual commit by Lucas; M0 acceptance criteria in `Docs/technical/m0-network-foundation.md` all green.
 
 Known issues:
 - `BP_RaidGameMode` still references template `BP_TopDownCharacter`/`BP_TopDownController` for Pawn/Controller. Acceptable for M0 (raid-specific Character/Controller is M1 scope), but the asset will need re-pointing when M1 introduces a dedicated pawn.
@@ -151,5 +153,68 @@ Known issues:
 - Live Coding gotcha recorded: new .cpp files require a full Build.bat run, not just Ctrl+Alt+F11. Logged here so the next agent does not repeat the loop.
 
 Next:
-- Lucas runs PIE: 2 players, Play As Listen Server, map `L_Test_Network`. Verify host+client movement visibility, join log, and clean disconnect. Then trigger a phase change via console (`ke * SetRaidPhase InRaid 0`) or a debug key and confirm clients see `RaidPhase` exactly once via `OnRep_RaidPhase` log.
+- M1 scope: dedicated RaidCharacter/RaidController (move Pawn/Controller off template), aim pipeline, weapon/fire contract per `network-contracts.json`, fire origin tolerance check, fire multicast feedback. Read `Docs/technical/network-architecture.md` and `network-contracts.json` before planning; open question for Lucas — which M1 sub-item to pick first (aim vs. weapon fire vs. interaction RPC pattern).
+
+## 2026-07-21 09:00 - Kimi - M1 / character + interaction compile pass
+
+Status: PARTIAL
+
+Changed:
+- `Source/MYPROJ2/Character/MYPROJ2CharacterBase.h/.cpp`: WASD-driven raid pawn. Cursor-deprojection aim on owning client with instant `VisualRoot` yaw, rate-limited `ServerUpdateAim` (Unreliable) at `NetworkSettings::AimSendRateHz`, replicated `ServerAimYaw`, `RInterpTo` for simulated proxies, server rotates capsule toward `ServerAimYaw`. `bOrientRotationToMovement=false`, native CharacterMovement replication untouched.
+- `Source/MYPROJ2/Interaction/InteractionTypes.h`: `FInteractionQueryResult` (local-only UI state) + `EInteractionRejectReason` per M1 doc.
+- `Source/MYPROJ2/Interaction/Interactable.h`: `UInteractable`/`IInteractable` with three pure virtuals (availability check, prompt, server-side execute). Note: M1 doc's `BlueprintNativeEvent` form was incompatible with `CannotImplementInterfaceInBlueprint`; switched to C++ pure virtuals because no BP implementations are needed for M1. Documented inline.
+- `Source/MYPROJ2/Interaction/InteractionComponent.h/.cpp`: `CurrentFocus` local trace every frame via `GetHitResultUnderCursor(ECC_Visibility)`; `TryInteract` increments replicated `InteractSequence` then `ServerTryInteract(Target, Sequence)`. Server validates null → duplicate-sequence → interface → availability → distance → LOS (Visibility line trace, ignores self), then `IInteractable::ExecuteInteraction`. Rejections surface via `ClientInteractionRejected` (Reliable).
+- `Source/MYPROJ2/Interaction/TestInteractable.h/.cpp`: replicated `bActivated` with `OnRep_Activated`; toggles and applies green/red dynamic material. Engine cube mesh so no external content needed; Visibility-block-only collision so it shows up in both local focus trace and server LOS trace.
+- `Source/MYPROJ2/MYPROJ2PlayerController.h/.cpp`: removed click-to-move; only adds `DefaultMappingContext` and keeps cursor visible. Action bindings live on the possessed Character.
+
+Contracts:
+- `AMYPROJ2CharacterBase::ServerAimYaw` (float, Replicated) and `ServerUpdateAim(float)` Unreliable Server RPC, capped by `UMYPROJ2NetworkSettings::AimSendRateHz`.
+- `UInteractionComponent::InteractSequence` (int32, Replicated), `ServerTryInteract(AActor*, int32)` Reliable Server RPC, `ClientInteractionRejected(AActor*, EInteractionRejectReason)` Reliable Client RPC.
+- `ATestInteractable::bActivated` (bool, ReplicatedUsing=OnRep_Activated).
+- New log categories used: `LogMYPROJ2Interaction` (already declared in M0).
+- No custom Transform RPC; native CharacterMovement remains the only movement channel.
+
+Validation:
+- `Build.bat MYPROJ2Editor Win64 Development -waitmutex` → `Result: Succeeded` (12.4s UBA, 8 actions). Initial UHT failure on `BlueprintNativeEvent` + `CannotImplementInterfaceInBlueprint` was resolved by switching the three interface methods to C++ pure virtuals; decision recorded above.
+- `read_lints Source/MYPROJ2` → 0 diagnostics.
+- No PIE run yet; movement/facing/interaction behaviour not yet validated in-engine.
+
+Known issues:
+- `BP_RaidGameMode` CDO still pins `DefaultPawnClass=BP_TopDownCharacter` and `PlayerControllerClass=BP_TopDownController`. The new M1 classes are compiled but not wired; WASD/aim/interact are not reachable in PIE until Lucas derives `BP_RaidCharacter` from `AMYPROJ2CharacterBase` and `BP_RaidPlayerController` from `AMYPROJ2PlayerController` (or reparents existing BPs) and points `BP_RaidGameMode` at them.
+- Old `AMYPROJ2Character` (template top-down) still exists in `Source/MYPROJ2/MYPROJ2Character.h/.cpp`. Kept so `BP_TopDownCharacter` keeps compiling. Per M1 doc, we will not subclass it for production; we will retire it once `BP_RaidGameMode` no longer references it.
+- `ATestInteractable` is not yet placed in `L_Test_Network`. Local focus trace + server LOS both rely on its Visibility-block collision being present in the world.
+- `IA_Move`/`IA_Interact` Input Actions and an Input Mapping Context asset do not exist yet in Content; they must be created in-Editor and assigned to `BP_RaidCharacter` (`MoveAction`, `InteractAction`) and `BP_RaidPlayerController` (`DefaultMappingContext`).
+
+Next:
+- Lucas wires M1 in Editor: create `IA_Move` (Axis2D), `IA_Interact` (Digital), `IMC_Raid`; create `BP_RaidCharacter : AMYPROJ2CharacterBase` with `MoveAction=IA_Move`, `InteractAction=IA_Interact`; create `BP_RaidPlayerController : AMYPROJ2PlayerController` with `DefaultMappingContext=IMC_Raid`; update `BP_RaidGameMode` CDO to the new classes; place one `ATestInteractable` in `L_Test_Network`; PIE 2-player run: WASD both, independent aim, both toggle the cube to green, distance/LOS rejection logged via `LogMYPROJ2Interaction`. Then start M2 combat.
+
+## 2026-07-21 09:35 - Kimi - M1 / Editor wiring via MCP (partial)
+
+Status: PARTIAL
+
+Changed:
+- `/Game/Raid/Input/IA_Move` (InputAction, valueType=Axis2D) created via DataAssetTools.
+- `/Game/Raid/Input/IA_Interact` (InputAction, default Boolean) created.
+- `/Game/Raid/Input/IMC_Raid` (InputMappingContext) created. **Mappings array left EMPTY on purpose** — see Known issues.
+- `/Game/Raid/Blueprints/BP_RaidCharacter` (parent `AMYPROJ2CharacterBase`) created and compiled. CDO: `MoveAction=IA_Move`, `InteractAction=IA_Interact`.
+- `/Game/Raid/Blueprints/BP_RaidPlayerController` (parent `AMYPROJ2PlayerController`) created and compiled. CDO: `DefaultMappingContext=IMC_Raid`.
+- `/Game/Raid/Blueprints/BP_RaidGameMode` CDO: `DefaultPawnClass=BP_RaidCharacter_C`, `PlayerControllerClass=BP_RaidPlayerController_C`. `GameStateClass`/`PlayerStateClass` unchanged.
+- `/Game/Raid/Maps/L_Test_Network`: placed one `ATestInteractable` at (300, 300, 100), centred between the four M0 PlayerStarts (well inside 250cm interact range of spawn).
+
+Contracts:
+- `BP_RaidGameMode` no longer references template `BP_TopDownCharacter` / `BP_TopDownController`. M0 known-issue #1 resolved.
+- New assets: `IA_Move`, `IA_Interact`, `IMC_Raid`, `BP_RaidCharacter`, `BP_RaidPlayerController`. Map: `L_Test_Network` (modified, saved).
+
+Validation:
+- All Blueprint `set_properties` calls returned `true`; re-read CDO properties confirmed values persisted (IA references, IMC reference, GameMode class refs).
+- `AssetTools.save_assets` succeeded for all touched assets.
+- No PIE run yet; movement, aim, interaction, replicate behaviour not yet validated in-engine.
+
+Known issues:
+- **`IMC_Raid.mappings` is empty.** Programmatic construction of `FEnhancedActionKeyMapping.modifiers` (Negate/SwizzleAxis instanced sub-objects) is not exposed through ObjectTools/BlueprintTools — `set_properties` accepts class paths for instanced sub-objects but the property was rejected with "ArrayRemove: elements changed alongside the size change; removed elements are ambiguous" when rewriting the array. Until this is solved the IMC has no key bindings, so WASD/E in PIE will do nothing. Lucas must open `IMC_Raid` in Editor and add: `W → IA_Move (Swizzle: YXZ)`, `S → IA_Move (Negate, Swizzle: YXZ)`, `D → IA_Move`, `A → IA_Move (Negate)`, `E → IA_Interact`. ~2 minutes of manual work. Alternatively add the mappings via Editor UI then save; nothing else needs to change.
+- `BP_RaidCharacter` was compiled before its `MoveAction`/`InteractAction` were set; the values were written directly to the CDO and persisted. Blueprint remains compiled; if Editor shows a stale-class warning on next open, just recompile from the Editor once.
+- No remote-facing smoothing has been validated under 100ms RTT yet; M1 acceptance criteria 2/3 still pending a PIE run with network emulation.
+
+Next:
+- Lucas adds the five key mappings in `IMC_Raid` (see Known issues), then PIE 2-player acceptance per `Docs/technical/m1-character-interaction.md`: (1) both clients move independently with WASD, (2) both aim independently with cursor, (3) both toggle the centre cube red↔green, (4) verify rejection log when interacting from >250cm, (5) verify `LogMYPROJ2Interaction` shows `Interaction executed: TestInteractable ... by <char> (seq=N)` exactly once per accepted press. After acceptance, M2 scope.
 
