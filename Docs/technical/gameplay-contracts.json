@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "inventory": {
+    "playerGrid": { "columns": 10, "rows": 6 },
+    "stashInitialGrid": { "columns": 10, "rows": 8 },
+    "stashUpgradedGrid": { "columns": 12, "rows": 10 },
+    "containerGrid": { "columns": 8, "rows": 6 },
+    "maxStackQuantity": 999,
+    "maxTransactionDistanceCm": 250.0,
+    "requestSequenceBits": 16
+  },
+  "testItems": [
+    { "asset": "DA_Item_Scrap", "id": "Item:Scrap", "size": [1, 1], "maxStack": 20, "type": "Material" },
+    { "asset": "DA_Item_Medkit", "id": "Item:Medkit", "size": [2, 1], "maxStack": 3, "type": "Consumable", "heal": 35.0 },
+    { "asset": "DA_Part_TestBarrel", "id": "Item:Part_TestBarrel", "size": [2, 1], "maxStack": 1, "type": "WeaponPart" },
+    { "asset": "DA_Part_TestStock", "id": "Item:Part_TestStock", "size": [2, 2], "maxStack": 1, "type": "WeaponPart" }
+  ],
+  "loot": {
+    "testTable": "DT_Loot_Test",
+    "defaultRolls": 4,
+    "maxRollsPerContainer": 16,
+    "generationVersion": 1,
+    "duplicateStackPolicy": "merge-then-first-fit"
+  },
+  "save": {
+    "slot": "MYPROJ2_Profile_0",
+    "backupSlot": "MYPROJ2_Profile_0_Backup",
+    "currentVersion": 1,
+    "baseMap": "/Game/Raid/Maps/L_Base_Graybox"
+  },
+  "weapon": {
+    "slots": ["Barrel", "Stock", "Magazine", "Optic"],
+    "statOrder": "base-then-additive-then-multiplicative-then-clamp",
+    "clamps": {
+      "damage": [1.0, 1000.0],
+      "fireIntervalSeconds": [0.05, 10.0],
+      "rangeCm": [100.0, 20000.0],
+      "spreadDegrees": [0.0, 45.0],
+      "noiseRadiusCm": [0.0, 10000.0],
+      "magazineSize": [1, 500]
+    }
+  },
+  "enemy": {
+    "testDefinition": "DA_Enemy_Grunt",
+    "testDefinitionId": "Enemy:Grunt",
+    "maxAlive": 8,
+    "spawnIntervalSeconds": 3.0,
+    "despawnDistanceCm": 6000.0,
+    "sightRadiusCm": 1800.0,
+    "loseSightRadiusCm": 2200.0,
+    "hearingRangeCm": 2500.0,
+    "attackRangeCm": 180.0,
+    "attackCooldownSeconds": 1.2,
+    "attackDamage": 15.0,
+    "targetForgetSeconds": 4.0
+  },
+  "requiredCollisionChannels": ["WeaponTrace", "InteractionTrace"],
+  "outOfScopeThroughM7": [
+    "backend-inventory",
+    "cross-host-trust",
+    "item-trading",
+    "crafting",
+    "insurance",
+    "weapon-part-visuals",
+    "projectile-weapons",
+    "client-side-rewind",
+    "ai-on-clients",
+    "boss-ai",
+    "procedural-level-generation"
+  ]
+}

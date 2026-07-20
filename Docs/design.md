@@ -9,7 +9,7 @@
 | 项 | 值 |
 |---|---|
 | 开发者 | 单人；目标是交付一个可验证的联机灰盒切片，不追求 8 人团队完整度 |
-| 周期 | 约 2 个月全职；M0-M8 是方向性路线，实际首个可玩版本以 M0-M4 为止 |
+| 周期 | 约 2 个月全职；按 M0-M8 递进，M5/M6 只交付技术文档规定的最小版本 |
 | 引擎 | UE5.8（Top Down Template + 内建 Unreal MCP） |
 | 美术资源 | AI 生成为主，作为占位资源接入骨骼 Socket 部件堆叠系统（详见第 4 节）；Mod 制作工具链暂不做，不影响底层渲染方案 |
 | 数值策划 | 本阶段不做，先用直觉数值占位 |
@@ -19,7 +19,7 @@
 | 联机 | Co-op（无 PVP），主机权威的简化同步模型（非帧同步，详见 3.1） |
 | 存档 | 本地 SaveGame，无需网络后端 |
 | 战斗操作 | 双摇杆式：WASD 移动 + 鼠标自由瞄准 |
-| 怪物 AI | UE 内建 Behavior Tree，完整节点（巡逻/索敌/警觉/攻击/呼叫增援） |
+| 怪物 AI | UE Behavior Tree；首版只承诺巡逻/视觉与听觉索敌/追击/攻击/丢失目标，增援与 Boss 延期 |
 | 地图结构 | 一张固定大地图（手搭，参考塔科夫），核心区域固定，空地区域随机刷新营地/兴趣点 |
 
 ---
@@ -70,7 +70,7 @@
 | M4 | 搜刮/容器系统（DataTable 驱动的随机战利品） |
 | M5 | 基地与局外成长（仓库、基地功能占位） |
 | M6 | 武器装配系统（数值层，不接外观） |
-| M7 | 怪物生成与 AI（Spawner + 完整 Behavior Tree） |
+| M7 | 怪物生成与 AI（Server Spawner + 核心 Behavior Tree） |
 | M8 | 撤离流程串联（插入→闭环→结算→写回存档，单人+联机各验证一遍） |
 | M9 | 简单美术表现接入（详见第 4 节） |
 | M10 | 打磨（视剩余时间投入） |
@@ -81,11 +81,12 @@ M0-M8 完成即为"整个游戏流程跑起来"的验收基准。
 
 首个可玩版本必须按以下顺序交付，不能并行扩张系统：
 
-1. **Vertical Slice A（M0-M2）**：2 人 Listen Server，移动、瞄准、交互占位、单把 Hitscan 武器、单个可受伤目标。
-2. **Vertical Slice B（M3-M4）**：一个背包、一个容器、一次权威随机掉落和拾取。
-3. **Vertical Slice C（M7-M8 的最小子集）**：一种敌人、一个生成点、一个固定撤离点、成功/失败结算。
+1. **Vertical Slice A（M0-M2，已完成）**：2 人 Listen Server，移动、瞄准、交互占位、单把 Hitscan 武器、单个可受伤目标。
+2. **Vertical Slice B（M3-M4）**：一个玩家网格背包、一个容器、一次 Server 权威随机掉落和竞争拾取。
+3. **Vertical Slice C（M5-M6）**：一个本地仓库、两个基地模块、两个数值武器部件；不扩张内容数量。
+4. **Vertical Slice D（M7-M8）**：一种敌人、一个生成 Director、一个固定撤离点、成功/失败结算。
 
-以下内容默认延期，只有 Vertical Slice C 稳定后才能进入：基地模块树、武器多槽装配、条件/呼叫类撤离点、Boss、复杂随机营地、完整部件堆叠美术和 Mod 工具链。M5/M6/M9 应视为扩展里程碑，而不是两个月交付承诺。
+以下内容默认延期：完整基地模块树、武器部件外观、条件/呼叫类撤离点、Boss、生成新援军、复杂随机营地、完整部件堆叠美术和 Mod 工具链。M5/M6 只实现最小技术闭环；M9 仍是扩展里程碑。
 
 禁止在 M0-M2 引入：GAS、大型事件总线、自研移动复制、回滚/延迟补偿、Steam/EOS 登录、无缝旅行、专用服务器、复杂 UObject 网络子对象。它们都不能直接提高当前灰盒闭环的验收价值。
 
@@ -134,33 +135,42 @@ M0-M8 完成即为"整个游戏流程跑起来"的验收基准。
 - 弹道模型先用 Hitscan 实现，抛射体作为后续可选加项。
 
 ### 3.4 背包与道具系统（M3）
-- `FInventoryItem`（运行时状态）+ `UItemDataAsset`（静态配置：图标/体积/类型/基础数值）分离。
-- `UInventoryComponent`：增删/堆叠/校验容量全部由 Server 执行；M3 再引入 Fast Array 或受控属性复制，不在 M0-M2 预埋背包协议。
+- `UItemDefinition` Primary Data Asset 保存静态图标、类型、格子尺寸和堆叠上限；`FItemInstance` 只保存稳定 ID、数量、位置和旋转。
+- 玩家局内 `UInventoryComponent` 放在 PlayerController 上，使用 Fast Array 向拥有者复制；所有增删、移动、旋转、拆分、合并和使用都由 Server 原子执行。
+- M3 先拆分 `WeaponTrace` 与 `InteractionTrace`，避免战斗、交互和容器继续共用 Visibility。
+- 权威规范：`Docs/technical/m3-inventory-items.md`。
 
 ### 3.5 搜刮/容器系统（M4）
-- `ALootContainer`：持有 `LootTableID`，**首次被打开时**在 Server 侧按 `DT_LootTable` 生成内容并写入自身 `UInventoryComponent`，避免多人同时开箱看到不同结果的同步问题。
+- `ALootContainer` 首次成功交互时由 Server 使用 `RaidSeed + ContainerId + GenerationVersion` 确定性生成内容；客户端不运行随机。
+- 容器使用同一 Fast Array Inventory，但随世界 Actor relevancy 复制。玩家与容器间转移通过拥有的 PlayerController RPC，一次事务同时提交两侧。
+- 两人抢同一物品时只允许一个成功；迟加入必须由属性/Fast Array 重建当前内容。
+- 权威规范：`Docs/technical/m4-loot-containers.md`。
 
 ### 3.6 基地与局外成长（M5）
-- 基地是独立 Level/Sublevel，承载：
-  - 仓库（Stash）：跨局持久化的 `UInventoryComponent`，数据来源于 SaveGame。
-  - 基地功能模块：`FHideoutModule`（等级/解锁条件/解锁效果），先定 2-3 个（如仓库扩容、武器台）跑通框架，其余后补。
-  - 升级判定用"消耗仓库物品 + 立即完成/简单等待"模型即可。
+- 基地是 Standalone 本地场景；M5 不把 SaveGame 当作多人权威数据，也不提前结算局内战利品。
+- `UProfileSubsystem` 统一管理版本化 SaveGame、主/备份槽和迁移；Stash 只序列化 ID/value structs。
+- 首版模块只有仓库扩容和工作台解锁，升级以“校验全部成本 → 原子扣除 → 保存”完成，不做建造计时。
+- 权威规范：`Docs/technical/m5-base-persistence.md`。
 
 ### 3.7 武器装配系统（M6）
-- `UWeaponBase` 持有 `TMap<EAttachSlot, FWeaponPartData>`（枪管/瞄具/枪托/弹匣等槽位）。
-- `FWeaponPartData` 来自 `DT_WeaponParts`：对后坐力、精度、噪音半径、弹匣容量做数值修正，**只做数值层，不接外观**。
+- `UWeaponPartDefinition` 是物品定义子类；首版固定枪管/枪托/弹匣/瞄具槽位，只做数值，不切换外观。
+- 装配状态使用按槽位排序的小数组而非 `TMap`；Server 从基础值重新计算“加法 → 乘法 → Clamp”，客户端不能提交最终数值。
+- 安装/拆卸与 Inventory 是单次原子事务；噪音半径在 Server 接受开火后接入 AI Hearing。
+- 权威规范：`Docs/technical/m6-weapon-assembly.md`。
 
 ### 3.8 怪物生成与 AI（M7）
-- `AEnemySpawnDirector`：按玩家位置/区域 Tag，依据 `DT_EnemySpawnTable` 触发生成，控制同屏数量上限。
-- 每只怪物：`AEnemyBase` + `AAIController` + `UBehaviorTree`：
+- `AEnemySpawnDirector` 只在 Server 运行，使用固定 SpawnPoint、区域 Tag、权重表和存活上限；客户端永不生成敌人。
+- 每只怪物：`AEnemyCharacter` + `AEnemyAIController` + `UBehaviorTree`：
 ```
 Root
  ├─ Selector: 状态优先级
- │   ├─ Sequence: 已警觉 → 索敌/追击 → 进入攻击范围 → 攻击
- │   ├─ Sequence: 听到/看到玩家 → 切换为"警觉" → 呼叫附近同类
- │   └─ Sequence: 默认 → 按 PatrolPoints 巡逻
+ │   ├─ Sequence: 目标有效 → 追击 → 攻击范围/冷却校验 → Server 伤害
+ │   ├─ Sequence: 听到噪音 → 前往最后位置 → 搜索/遗忘
+ │   └─ Sequence: 默认 → 选择巡逻点 → 巡逻
 ```
-- 感知用 `UAIPerceptionComponent`（视觉+听觉），呼叫增援用 `UAISense_Hearing::ReportNoiseEvent` + 半径内同 Tag Actor 查询即可，不需要额外事件总线框架。
+- AI/Blackboard 只在 Server 执行；客户端只接收移动、血量、死亡和简化 AlertState。死亡是可迟加入恢复的复制属性。
+- M7 不承诺 Boss 或生成新援军；附近现存敌人共享警觉是可选收尾项。
+- 权威规范：`Docs/technical/m7-enemy-ai.md`。
 
 ### 3.9 撤离与地图流程（M8）
 - 一张手搭的固定大地图（参考塔科夫）：核心区域完全手工摆放固定；外围空地放置若干 `ACampSpawnPoint`，Server 在每局开始时从预设模板池中随机选取一部分启用，实现"同一张地图每局体验略有不同"，且不需要做真随机地形生成。
@@ -198,13 +208,16 @@ Root
 ## 5. 关键数据结构一览
 
 ```
-DT_LootTable        : ItemID, Weight, MinMax数量, 区域Tag
-DT_EnemySpawnTable  : EnemyClass, 区域Tag, 生成权重, 强化系数
+DA_ItemDefinition   : ItemID, 类型, 格子尺寸, 堆叠上限, Tags
+FItemInstance       : InstanceID, DefinitionID, 数量, 格子位置, 旋转
+DT_LootTable        : LootPoolID, ItemDefinitionID, Weight, MinMax数量, 区域Tag
+DA_LootContainer    : LootPoolID, Rolls, GridSize
+DA_EnemyDefinition  : EnemyClass, 血量, 移速, 攻击参数, Tags
+DT_EnemySpawnTable  : EnemyDefinitionID, 区域查询, 生成权重
 DT_ExtractionConfig : ExtractID, 类型(固定/条件/呼叫), 触发条件, 持续时间
-DT_WeaponParts      : PartID, 挂载槽位(EAttachSlot), 数值修正
-DA_ItemData         : 单个物品的静态配置（体积/类型/图标/基础数值）
+DA_WeaponPart       : PartID, 挂载槽位, 兼容查询, 加法/乘法修正
 DA_CharacterPartSet : 角色部件贴图配置（见第4节，内部使用，不含Mod工具链）
-FHideoutModule      : 基地功能模块（等级/解锁条件/解锁效果）
+DA_HideoutModule    : 基地模块等级、成本、功能Tags、仓库尺寸效果
 UExtractionSaveGame : 仓库内容、基地状态、已解锁内容
 ```
 
@@ -218,10 +231,8 @@ UExtractionSaveGame : 仓库内容、基地状态、已解锁内容
 
 ---
 
-## 7. 交给后续技术文档细化的接口点
+## 7. 技术规范状态
 
-以下内容本文档只给出方向性设计，具体协议/参数建议留给后续技术文档（如网络协议定义）阶段细化：
-- 玩家状态低频广播的具体频率（建议起点 10-15Hz）、字段的具体位宽/编码方式。
-- 简化动画状态枚举的完整清单（走/跑/开火/受击/翻滚/死亡等，及其互斥/优先级关系）。
-- 各 RPC 的具体函数签名、Reliable/Unreliable 选择（建议：位置广播用 Unreliable，攻击事件/伤害结算用 Reliable）。
-- `DT_EnemySpawnTable`、`DT_LootTable` 等表格的具体字段类型与取值范围。
+M0-M7 已在 `Docs/technical/` 下完成权威技术拆分，具体类、RPC、复制方式、默认 JSON、验收和停线条件以对应里程碑文档为准。`Docs/chat.md` 是实现 Agent 的精简交接入口。
+
+尚待首席技术设计的部分：M8 撤离与 Server 确认结算、M9 美术部件管线、M10 打磨/性能/发布。M8 开始前必须先验收 M7，不提前把 SaveGame 与局内权威数据混合。

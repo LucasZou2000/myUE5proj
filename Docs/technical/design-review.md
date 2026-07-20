@@ -22,7 +22,7 @@ One architectural change is mandatory: do not replace UE CharacterMovement repli
 
 ### 1. Scope: build one deep slice, not every listed system
 
-M0-M4 plus minimal enemy/extraction integration is the realistic two-month target. A robust one-weapon, one-enemy, one-container, one-extraction flow demonstrates more engineering ability than unfinished base building, attachment slots, multiple extraction types, bosses, and a bespoke character art pipeline.
+M0-M4 remains the first playable target. M5-M7 are now specified as sequential, deliberately minimal extensions: two base modules, two numerical weapon parts, and one core enemy. Expanding their content counts, adding multiple extraction types, bosses, or a bespoke character art pipeline is still outside the realistic first-slice scope.
 
 ### 2. Movement: native Server authority
 
@@ -57,11 +57,11 @@ Use `UPrimaryDataAsset` for polymorphic definitions such as weapons/items that r
 | 3 | M2 combat, health, death, one test target/enemy |
 | 4 | M3 inventory with one replicated container workflow |
 | 5 | M4 loot generation and pickup race handling |
-| 6 | Minimal AI plus fixed extraction and settlement payload |
-| 7 | SaveGame/base screen and one art-pipeline spike |
-| 8 | Bug fixing, network stress, packaging, presentation |
+| 6 | M5 local profile, stash, and two base modules |
+| 7 | M6 two-part numerical weapon assembly |
+| 8 | M7 one Server-only enemy and spawn director |
 
-This schedule has no slack for M5/M6 as originally described. Those systems become stretch work.
+M8 extraction/settlement and M9 presentation follow this sequence and require either additional schedule or reduced polish elsewhere. The broad versions of M5/M6 remain stretch work; only the milestone documents' minimum content is committed.
 
 ## Cross-cutting rules for future design
 
@@ -77,4 +77,3 @@ This schedule has no slack for M5/M6 as originally described. Those systems beco
 - Whether clients write their own Server-confirmed settlement to local SaveGame or only the host profile persists during early tests.
 - Whether final sessions use LAN OnlineSubsystem, EOS, or direct travel. M0 uses PIE/direct Listen Server only.
 - Whether character visuals remain socket sprites after the M9 spike.
-
