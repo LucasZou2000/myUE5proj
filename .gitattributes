@@ -1,0 +1,49 @@
+# ---------------------------------------------------------
+# Unreal Engine 项目 Git 属性
+# 文本文件：换行符规范化 + 合并友好
+# 二进制资产：走 Git LFS，避免仓库体积爆炸
+# ---------------------------------------------------------
+
+# 默认：自动检测文本文件，提交时转为 LF，检出时按 OS 转换
+* text=auto
+
+# --- 代码与纯文本配置（强制按文本处理，方便 diff / merge）---
+*.cpp      text
+*.h        text
+*.cs       text
+*.ini      text
+*.json     text
+*.md       text
+*.txt      text
+*.xml      text
+*.yaml     text
+*.yml      text
+*.uproject text
+*.uplugin  text
+
+# --- Unreal Engine 二进制资产（走 LFS，避免污染 Git 历史）---
+*.uasset   filter=lfs diff=lfs merge=lfs -text
+*.umap     filter=lfs diff=lfs merge=lfs -text
+*.upk      filter=lfs diff=lfs merge=lfs -text
+*.pak      filter=lfs diff=lfs merge=lfs -text
+*.ubulk    filter=lfs diff=lfs merge=lfs -text
+*.uexp     filter=lfs diff=lfs merge=lfs -text
+*.ufont    filter=lfs diff=lfs merge=lfs -text
+
+# --- 常见美术/音频/视频源文件（也建议走 LFS）---
+*.png      filter=lfs diff=lfs merge=lfs -text
+*.tga      filter=lfs diff=lfs merge=lfs -text
+*.jpg      filter=lfs diff=lfs merge=lfs -text
+*.jpeg     filter=lfs diff=lfs merge=lfs -text
+*.psd      filter=lfs diff=lfs merge=lfs -text
+*.exr      filter=lfs diff=lfs merge=lfs -text
+*.hdr      filter=lfs diff=lfs merge=lfs -text
+*.fbx      filter=lfs diff=lfs merge=lfs -text
+*.obj      filter=lfs diff=lfs merge=lfs -text
+*.wav      filter=lfs diff=lfs merge=lfs -text
+*.ogg      filter=lfs diff=lfs merge=lfs -text
+*.mp3      filter=lfs diff=lfs merge=lfs -text
+*.mp4      filter=lfs diff=lfs merge=lfs -text
+*.mov      filter=lfs diff=lfs merge=lfs -text
+*.ttf      filter=lfs diff=lfs merge=lfs -text
+*.otf      filter=lfs diff=lfs merge=lfs -text

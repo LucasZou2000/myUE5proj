@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "authorityModel": "listen-server-server-authoritative",
+  "playerMovement": "ue-character-movement-native",
+  "limits": {
+    "maxPlayers": 4,
+    "aimSendRateHz": 15.0,
+    "maxInteractDistanceCm": 250.0,
+    "maxFireOriginErrorCm": 150.0,
+    "maxAimErrorDegrees": 35.0
+  },
+  "rpc": {
+    "ServerUpdateAim": "unreliable",
+    "ServerTryInteract": "reliable",
+    "ClientInteractionRejected": "reliable",
+    "ServerFire": "reliable-m2-semi-auto-only",
+    "ClientRejectFire": "reliable",
+    "MulticastShotFX": "unreliable"
+  },
+  "testWeapon": {
+    "assetName": "DA_Weapon_TestRifle",
+    "weaponId": "Weapon:TestRifle",
+    "damage": 20.0,
+    "fireIntervalSeconds": 0.2,
+    "rangeCm": 5000.0,
+    "magazineSize": 12,
+    "traceChannel": "WeaponTrace",
+    "fireMode": "semi-auto"
+  },
+  "raidPhases": [
+    "Lobby",
+    "Deploying",
+    "InRaid",
+    "Resolving",
+    "Returning"
+  ],
+  "playerLifeStates": [
+    "Alive",
+    "DownedReserved",
+    "Dead",
+    "Extracted"
+  ],
+  "outOfScopeThroughM2": [
+    "online-subsystem",
+    "dedicated-server",
+    "host-migration",
+    "gameplay-ability-system",
+    "lag-compensation",
+    "inventory",
+    "loot",
+    "save-sync",
+    "custom-transform-rpc"
+  ]
+}
