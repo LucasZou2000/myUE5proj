@@ -2,6 +2,8 @@
 
 #include "Interaction/InteractionComponent.h"
 #include "Interaction/Interactable.h"
+#include "Loot/LootContainer.h"
+#include "MYPROJ2PlayerController.h"
 #include "Network/MYPROJ2NetworkTypes.h"
 #include "Network/MYPROJ2NetworkSettings.h"
 #include "MYPROJ2CollisionChannels.h"
@@ -115,6 +117,13 @@ void UInteractionComponent::TryInteract()
 	if (!CurrentFocus.bCanInteract || !CurrentFocus.Target)
 	{
 		return;
+	}
+	if (ALootContainer* LootContainer = Cast<ALootContainer>(CurrentFocus.Target))
+	{
+		if (AMYPROJ2PlayerController* Controller = Cast<AMYPROJ2PlayerController>(OwnerPawn->GetController()))
+		{
+			Controller->BeginLootOpenDelay(LootContainer);
+		}
 	}
 
 	InteractSequence++;

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "Inventory/InventoryTypes.h"
+#include "TimerManager.h"
 #include "MYPROJ2PlayerController.generated.h"
 
 class UInputMappingContext;
@@ -67,12 +68,22 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientLootTransferRejected(uint16 RequestId, EInventoryRejectReason Reason);
 
+	/** Starts the local presentation delay when the player sends an interaction request. */
+	void BeginLootOpenDelay(ALootContainer* Container);
+
 private:
 
 	/** Player raid inventory (M3). Created in the constructor so it exists on
 	 *  both Server and owning client before BeginPlay. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInventoryComponent> InventoryComponent;
+
+	TWeakObjectPtr<ALootContainer> PendingLootContainer;
+	FTimerHandle LootOpenDelayTimer;
+	bool bLootOpenAcknowledged = false;
+
+	void CompleteLootOpenDelay();
+	void ShowLootContainer(ALootContainer* Container);
 
 	bool IsLootRequestStale(uint16 RequestId) const;
 	bool ValidateLootContainerRequest(ALootContainer* Container, EInventoryRejectReason& OutReason) const;

@@ -233,38 +233,51 @@ Next:
 
 ## 2026-07-22  - Agent - M4 / container generation and transfer implementation
 
-Status: PARTIAL (C++ implementation complete; compile and PIE verification blocked by active UE Live Coding session; content assets and UI intentionally deferred).
+Status: PARTIAL (functional one-container slice and cold build complete; manual two-player race/late-join acceptance remains).
 
 Changed:
 
-- `Docs/technical/m4-loot-containers.md`: default container grid corrected to 5x8; specifies the M4 target-value budget, map multiplier, zone-tag filtering, budget-aware weights, deterministic placement, and UI deferral.
+- `Docs/technical/m4-loot-containers.md`: default container grid corrected to 5x8; specifies the target-value budget, map multiplier, zone-tag filtering, budget-aware weights, deterministic placement, and native two-grid UI.
 - `Docs/technical/gameplay-contracts.json`: `containerGrid` is now 5 columns x 8 rows.
 - `Source/MYPROJ2/Items/ItemDefinition.h`: adds static `LootValue` used only as a generation budget input.
 - `Source/MYPROJ2/Framework/MYPROJ2GameState.h/.cpp`, `MYPROJ2GameMode.cpp`: replicated per-raid `RaidSeed` and map-controlled `LootValueMultiplier`; GameMode assigns the seed once per hosted raid.
 - `Source/MYPROJ2/Loot/LootTypes.h`: DataTable row contract for pool, item ID, weight, quantities, and required zone tags.
-- `Source/MYPROJ2/Loot/LootContainerDefinition.h/.cpp`: Primary Data Asset for pool/table/rolls/5x8 grid/value budget/zone tags.
-- `Source/MYPROJ2/Loot/LootGenerationLibrary.h/.cpp`: Server-only deterministic local-stream generator. It validates rows, derives a seed from raid/container/version, applies value-aware weighted rolls, merges stacks, and row-major places within the grid.
-- `Source/MYPROJ2/Loot/LootContainer.h/.cpp`: replicated world Actor with 5x8 inventory, stable editor container ID, first-open generation, durable generated/open state, and `IInteractable` integration.
+- `Source/MYPROJ2/Loot/LootContainerDefinition.h/.cpp`: Primary Data Asset for pool/table/5x8 grid/value lower bound/zone tags, incremental-attempt cap, and reserved empty cells. Legacy rolls/variance fields remain only for existing assets.
+- `Source/MYPROJ2/Loot/LootGenerationLibrary.h/.cpp`: Server-only deterministic local-stream generator. It validates rows, derives a seed from raid/container/version, incrementally places weighted normal items until the map-multiplied value lower bound is reached, preserves empty cells, and uses 1x1 value-gap candidates only when normal shapes cannot complete the target.
+- `Source/MYPROJ2/Loot/LootContainer.h/.cpp`: replicated world Actor with 5x8 inventory, stable editor container ID, immediate first-open generation, durable generated/open state, and `IInteractable` integration.
 - `Source/MYPROJ2/Inventory/InventoryComponent.h/.cpp`: `AuthorityTransferTo` stages the destination then commits both inventories atomically; no delegate is emitted between source and destination commit.
-- `Source/MYPROJ2/MYPROJ2PlayerController.h/.cpp`: owned `ServerTakeFromContainer` / `ServerPutIntoContainer` RPCs validate sequence, living pawn, generated container, range, and interaction LOS; client open/rejection hooks added.
+- `Source/MYPROJ2/MYPROJ2PlayerController.h/.cpp`, `InteractionComponent.cpp`: after local interaction input, a 0.2s presentation delay opens the existing player inventory only if the Server success RPC arrives by the deadline. The success RPC is emitted after immediate server generation; it intentionally does not wait on container inventory replication. No key suppression is implemented yet.
+- Current debug presentation: container generation logs every generated item (name, quantity, grid coordinate, value) through `LogMYPROJ2LootContainer`; successful interaction opens the existing `WBP_InventoryGrid`. Container search/two-grid UI is deferred.
+- `Source/MYPROJ2/Loot/LootGenerationTests.cpp`: deterministic seed, stable IDs/placement, 5x8 bounds, and invalid-row termination automation coverage.
+- `/Game/Raid/Data/Loot/DT_Loot_Test`: Scrap weight 70 (quantity 3-8), Medkit weight 30 (quantity 1-2).
+- `/Game/Raid/Data/Loot/DA_Container_TestCrate`: pool `TestCrate`, 4 rolls, 5x8, target value 180, variance 0.15.
+- `/Game/Raid/Blueprints/BP_LootContainer_TestCrate`: replicated crate Blueprint with engine cube placeholder mesh and the test definition.
+- `L_Test_Network` external actor: one crate at `(300,0,260)`, ContainerId `BF7115F7-484E-022B-3D0D-B39317E64ECE`.
+- `DA_Item_Scrap` / `DA_Item_Medkit`: LootValue 15 / 90.
 
 Contracts:
 
 - `ALootContainer` has no client-callable Server RPC. All mutations route through the owning `AMYPROJ2PlayerController`.
 - Generation is Server-only and `bGenerated`/`bHasBeenOpened` plus Fast Array inventory are durable replication state for late joins.
-- M4 does not implement a finished UI. `ClientOpenLootContainer(ALootContainer*)` is the UI handoff; no gameplay operation depends on it.
+- The native widget is presentation only. It submits intent and never predicts inventory mutation.
 
 Validation:
 
-- UHT processed all M4 headers successfully and generated 13 headers.
-- `Build.bat MYPROJ2Editor Win64 Development ... -waitmutex` did not reach C++ compilation because UE reports active Live Coding. Do not interpret this as a code compile result.
+- MCP Live Coding compiled all M4 Source successfully after UE 5.8 shadow-warning fixes. The editor-closed `build.ps1` cold build also completed with `Result: Succeeded` after the incremental-generator and client-delay changes.
+- Automation `MYPROJ2.Loot.Generation.DeterminismAndBounds`: Success, 1 passed / 0 failed. The expected invalid-row warning was emitted once.
+- MCP-created assets were compiled, saved, and read back. The placed crate reports the expected definition, unique ID, generation version 1, and `bReplicates=true`.
+- Two-player PIE (Listen Server + Client 1) started and loaded `L_Test_Network` without M4 errors, then stopped cleanly. No network race or late-join interaction was automated.
 
 Remaining:
 
-- Close UE or disable Live Coding, then build.
-- In editor create `DT_Loot_Test`, `DA_Container_TestCrate`, `BP_LootContainer_TestCrate`, set existing item `LootValue` values, and place one crate with a unique `ContainerId` in `L_Test_Network`.
-- Run host/client first-open, concurrent take, out-of-range/LOS rejection, and late-join acceptance. UI remains deferred by user direction.
+- Manually verify full-stack take/put, simultaneous take winner, distance/LOS rejection, and late join. The MCP Slate tool cannot reliably aim at a 3D world actor.
+
+Validated by Lucas (2026-07-22):
+
+- Container interaction executes on the Server, the client presentation delay is correct, and the existing inventory UI opens correctly after the delay.
+- PIE two-player shutdown log contains only expected world/network cleanup (`HostClosedConnection` / `Cleanup`) and no M4 error.
+- Container searching and the two-grid container UI remain intentionally deferred; generated contents are inspected through `LogMYPROJ2LootContainer`.
 
 Next:
 
-- Compile M4 after Live Coding is disabled, address compiler errors if any, then create one crate test asset and run the two-player acceptance pass.
+- Run the bounded two-player manual M4 acceptance pass; do not start M5 until it passes.

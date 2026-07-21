@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Interaction/InteractionComponent.h"
 #include "Inventory/InventoryComponent.h"
+#include "Items/ItemDefinition.h"
 #include "Loot/LootContainerDefinition.h"
 #include "Loot/LootGenerationLibrary.h"
 #include "MYPROJ2PlayerController.h"
@@ -17,7 +18,7 @@ ALootContainer::ALootContainer()
 {
 	bReplicates = true;
 	SetReplicateMovement(false);
-	NetUpdateFrequency = 2.0f;
+	SetNetUpdateFrequency(2.0f);
 	ContainerMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ContainerMesh"));
 	SetRootComponent(ContainerMesh);
 	ContainerMesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
@@ -107,10 +108,21 @@ bool ALootContainer::AuthorityEnsureGenerated()
 	}
 	for (FItemInstance& Item : GeneratedItems)
 	{
+		const UItemDefinition* ItemDefinition = FLootGenerationLibrary::ResolveItemDefinition(Item.DefinitionId);
+		const FString ItemName = ItemDefinition && !ItemDefinition->DisplayName.IsEmpty()
+			? ItemDefinition->DisplayName.ToString() : Item.DefinitionId.ToString();
+		const int32 UnitValue = ItemDefinition ? ItemDefinition->LootValue : 0;
+		UE_LOG(LogMYPROJ2LootContainer, Log,
+			TEXT("Generated loot: container=%s item=%s quantity=%d grid=(%d,%d) value=%d"),
+			*GetName(), *ItemName, Item.Quantity, Item.GridPosition.X, Item.GridPosition.Y, Item.Quantity * UnitValue);
 		FReplicatedInventoryEntry& Entry = Inventory->ReplicatedItems.Entries.AddDefaulted_GetRef();
 		Entry.Item = MoveTemp(Item);
 		Entry.OwnerComponent = Inventory;
 		Inventory->ReplicatedItems.MarkItemDirty(Entry);
+	}
+	if (GeneratedItems.IsEmpty())
+	{
+		UE_LOG(LogMYPROJ2LootContainer, Log, TEXT("Generated loot: container=%s is empty."), *GetName());
 	}
 	bGenerated = true;
 	Inventory->OnInventoryChanged.Broadcast();

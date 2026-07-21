@@ -21,6 +21,7 @@ public class MYPROJ2 : ModuleRules
 			"Niagara",
 			"UMG",
 			"Slate",
+			"SlateCore",
 			"DeveloperSettings",
 			"GameplayTags",
 			"NetCore"

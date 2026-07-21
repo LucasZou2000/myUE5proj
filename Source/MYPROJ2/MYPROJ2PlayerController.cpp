@@ -3,6 +3,7 @@
 #include "MYPROJ2PlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
+#include "Character/MYPROJ2CharacterBase.h"
 #include "Inventory/InventoryComponent.h"
 #include "Inventory/InventoryTypes.h"
 #include "Loot/LootContainer.h"
@@ -11,6 +12,7 @@
 #include "Combat/HealthComponent.h"
 #include "GameFramework/Character.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 
 AMYPROJ2PlayerController::AMYPROJ2PlayerController()
 {
@@ -66,8 +68,8 @@ void AMYPROJ2PlayerController::MarkLootRequestConsumed(uint16 RequestId)
 bool AMYPROJ2PlayerController::ValidateLootContainerRequest(ALootContainer* Container, EInventoryRejectReason& OutReason) const
 {
 	OutReason = EInventoryRejectReason::InvalidRequest;
-	ACharacter* Character = Cast<ACharacter>(GetPawn());
-	if (!Character || (Character->FindComponentByClass<UHealthComponent>() && Character->FindComponentByClass<UHealthComponent>()->IsDead()))
+	ACharacter* ControlledCharacter = Cast<ACharacter>(GetPawn());
+	if (!ControlledCharacter || (ControlledCharacter->FindComponentByClass<UHealthComponent>() && ControlledCharacter->FindComponentByClass<UHealthComponent>()->IsDead()))
 	{
 		OutReason = EInventoryRejectReason::Dead;
 		return false;
@@ -77,14 +79,14 @@ bool AMYPROJ2PlayerController::ValidateLootContainerRequest(ALootContainer* Cont
 		return false;
 	}
 	const float MaxDistance = UMYPROJ2NetworkSettings::Get()->MaxInteractDistance;
-	if (FVector::DistSquared(Character->GetActorLocation(), Container->GetActorLocation()) > FMath::Square(MaxDistance))
+	if (FVector::DistSquared(ControlledCharacter->GetActorLocation(), Container->GetActorLocation()) > FMath::Square(MaxDistance))
 	{
 		OutReason = EInventoryRejectReason::NoSpace;
 		return false;
 	}
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(LootTransferLOS), false, Character);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(LootTransferLOS), false, ControlledCharacter);
 	FHitResult Hit;
-	if (GetWorld()->LineTraceSingleByChannel(Hit, Character->GetActorLocation(), Container->GetActorLocation(),
+	if (GetWorld()->LineTraceSingleByChannel(Hit, ControlledCharacter->GetActorLocation(), Container->GetActorLocation(),
 		MYPROJ2_TRACE_CHANNEL_INTERACTION, Params) && Hit.GetActor() != Container)
 	{
 		OutReason = EInventoryRejectReason::InvalidRequest;
@@ -131,9 +133,52 @@ void AMYPROJ2PlayerController::ServerPutIntoContainer_Implementation(ALootContai
 	Container->ForceNetUpdate();
 }
 
+void AMYPROJ2PlayerController::BeginLootOpenDelay(ALootContainer* Container)
+{
+	if (!Container)
+	{
+		return;
+	}
+	PendingLootContainer = Container;
+	bLootOpenAcknowledged = false;
+	GetWorldTimerManager().ClearTimer(LootOpenDelayTimer);
+	GetWorldTimerManager().SetTimer(LootOpenDelayTimer, this,
+		&AMYPROJ2PlayerController::CompleteLootOpenDelay, 0.2f, false);
+}
+
 void AMYPROJ2PlayerController::ClientOpenLootContainer_Implementation(ALootContainer* Container)
 {
-	// M4 has no finished UI. This notification is the stable client hook for WBP_LootContainer.
+	if (Container && PendingLootContainer.Get() == Container)
+	{
+		// The Server invokes this only after it has generated durable contents.
+		bLootOpenAcknowledged = true;
+	}
+}
+
+void AMYPROJ2PlayerController::CompleteLootOpenDelay()
+{
+	ALootContainer* Container = PendingLootContainer.Get();
+	// The Server sends ClientOpenLootContainer only after AuthorityEnsureGenerated succeeds.
+	// The player inventory UI does not depend on the container Fast Array arriving first.
+	const bool bCanShow = bLootOpenAcknowledged && Container;
+	PendingLootContainer.Reset();
+	bLootOpenAcknowledged = false;
+	if (bCanShow)
+	{
+		ShowLootContainer(Container);
+	}
+}
+
+void AMYPROJ2PlayerController::ShowLootContainer(ALootContainer* Container)
+{
+	if (!Container || !IsLocalPlayerController())
+	{
+		return;
+	}
+	if (AMYPROJ2CharacterBase* RaidCharacter = Cast<AMYPROJ2CharacterBase>(GetPawn()))
+	{
+		RaidCharacter->ShowInventoryUI();
+	}
 }
 
 void AMYPROJ2PlayerController::ClientLootTransferRejected_Implementation(uint16 RequestId, EInventoryRejectReason Reason)

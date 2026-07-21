@@ -29,6 +29,7 @@ struct FLootTableRow : public FTableRowBase
     UPROPERTY(EditAnywhere, meta=(ClampMin="0.0")) float Weight = 1.0f;
     UPROPERTY(EditAnywhere, meta=(ClampMin="1")) int32 MinQuantity = 1;
     UPROPERTY(EditAnywhere, meta=(ClampMin="1")) int32 MaxQuantity = 1;
+    UPROPERTY(EditAnywhere) bool bCanFillValueGap = false;
     UPROPERTY(EditAnywhere) FGameplayTagContainer RequiredZoneTags;
 };
 
@@ -38,26 +39,26 @@ class ULootContainerDefinition : public UPrimaryDataAsset
     GENERATED_BODY()
 public:
     UPROPERTY(EditDefaultsOnly) FName LootPoolId;
-    UPROPERTY(EditDefaultsOnly, meta=(ClampMin="1", ClampMax="16")) int32 Rolls = 4;
+    UPROPERTY(EditDefaultsOnly) int32 MaxGenerationAttempts = 64;
     UPROPERTY(EditDefaultsOnly) TObjectPtr<UDataTable> LootTable;
     UPROPERTY(EditDefaultsOnly) FIntPoint GridSize = FIntPoint(5, 8);
     UPROPERTY(EditDefaultsOnly) int32 BaseTargetValue = 100;
-    UPROPERTY(EditDefaultsOnly) float TargetValueVariance = 0.15f;
+    UPROPERTY(EditDefaultsOnly) int32 ReservedEmptyCells = 4;
     UPROPERTY(EditDefaultsOnly) FGameplayTagContainer ZoneTags;
 };
 ```
 
 Reject invalid rows at generation time: missing definition, non-positive weight, inverted quantity range, or an item footprint larger than the container. Log once per bad row.
 
-### M4 value-budget selection
+### M4 incremental value selection
 
 `UItemDefinition::LootValue` is the static per-unit value. On first open, the Server computes:
 
 ```text
-target = BaseTargetValue * GameState.LootValueMultiplier * random(1 - variance, 1 + variance)
+valueLowerBound = BaseTargetValue * GameState.LootValueMultiplier
 ```
 
-For each roll, rows in the matching pool whose `RequiredZoneTags` are contained by the container's `ZoneTags` participate. Their effective weight is `Weight * clamp(remainingBudget / Item.LootValue, 0.20, 2.0)`. This keeps base table weight authoritative while gently favouring entries appropriate to the remaining value budget. Quantity is sampled from the row range, then first merges into compatible stacks and places remaining stacks row-major; failed placement ends that roll without retry loops. M4's default container is **5 columns x 8 rows**. Future definitions may keep width 5 and choose any height through 10.
+Rows in the matching pool whose `RequiredZoneTags` are contained by the container's `ZoneTags` are weighted by their authored `Weight`. The Server picks and places one result at a time, adding its actual quantity value until the lower bound is reached or placement safety limits stop the pass. It preserves `ReservedEmptyCells` throughout, so a 5x8 container is intentionally not packed full. If ordinary entries cannot reach the bound because their shapes no longer fit, rows explicitly marked `bCanFillValueGap` may fill remaining holes; they must be 1x1 and are intended for future purple/gold/red high-value items. For backward compatibility the generator can use any eligible 1x1 ordinary row when a table has no explicit filler row. Overshooting the lower bound is accepted. M4's default container is **5 columns x 8 rows**. Future definitions may keep width 5 and choose any height through 10.
 
 ## Determinism
 
@@ -81,7 +82,7 @@ public:
 };
 ```
 
-The first accepted interaction calls `AuthorityEnsureGenerated()` exactly once and sets `bHasBeenOpened`. `bGenerated`, `bHasBeenOpened`, and inventory entries are durable replicated state, so late joiners reconstruct the container/lid. Active viewer lists and per-player open/close state remain local UI state; container content is replicated to all relevant clients for prototype simplicity.
+The first accepted interaction calls `AuthorityEnsureGenerated()` immediately, exactly once, and sets `bHasBeenOpened`. The owning client starts a 0.2 second local presentation delay at input time. It shows the player inventory only at the deadline when the success RPC has arrived; a late or missing response does not open the UI. The RPC is sent only after server generation succeeds, so this debug presentation does not wait for unrelated container Fast Array replication. `bGenerated`, `bHasBeenOpened`, and inventory entries are durable replicated state, so late joiners reconstruct the container/lid. Active viewer lists and per-player open/close state remain local UI state; container content is replicated to all relevant clients for prototype simplicity.
 
 Use NetDormancy only after correctness: wake/flush before mutation, return dormant after a quiet delay. Do not make a container dormant while a transfer is pending.
 
@@ -109,15 +110,17 @@ If the destination cannot fit the requested quantity, reject the entire request 
 
 ## UI and interaction
 
-Interaction remains handled by `UInteractionComponent`. After Server acceptance, the owning PlayerController receives `ClientOpenLootContainer`. UI shows player and container grids side by side. Closing the UI is local presentation only; walking beyond range causes subsequent transfer requests to fail.
+Interaction remains handled by `UInteractionComponent`. After Server acceptance, the owning PlayerController receives `ClientOpenLootContainer`. For the current debugging slice it shows the existing player `WBP_InventoryGrid` only; container content is emitted by the Server to `LogMYPROJ2LootContainer`. The two-grid container UI and item searching are deferred. The inventory UI does not change movement input.
+
+The M4 slice uses native `ULootContainerWidget`: a fixed 10x6 player grid and the definition-driven container grid are rendered side by side. Clicking a container entry requests a full-stack take with deterministic first-fit; clicking a player entry requests a full-stack put. The widget never mutates either inventory locally and rebuilds from Fast Array change delegates.
 
 ## MCP assets
 
 - `/Game/Raid/Data/Loot/DT_Loot_Test`
 - `/Game/Raid/Data/Loot/DA_Container_TestCrate`
 - `/Game/Raid/Blueprints/BP_LootContainer_TestCrate`
-- `/Game/Raid/UI/WBP_LootContainer` (deferred from this implementation; C++ open notification and data binding surface are present)
-- Place two crates with unique `ContainerId` values in `L_Test_Network`.
+- Native `ULootContainerWidget` (no additional Widget Blueprint is required for the one-container slice).
+- Place one crate with a unique `ContainerId` in `L_Test_Network`. Add a second only for the later duplicate-ID/late-join acceptance pass.
 
 ## Implementation order
 
@@ -125,7 +128,7 @@ Interaction remains handled by `UInteractionComponent`. After Server acceptance,
 2. Add container Actor and reusable world inventory replication.
 3. Integrate `IInteractable` and first-open generation.
 4. Implement atomic transfer API and owned Controller RPCs.
-5. Create the test DataTable/definition/Blueprint and place two uniquely identified crates. UI is deliberately deferred; `ClientOpenLootContainer` is its integration point.
+5. Create the test DataTable/definition/Blueprint, native two-grid UI, and one uniquely identified test crate.
 6. Test late join and two-player race under network emulation.
 
 ## Acceptance criteria

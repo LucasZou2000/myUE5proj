@@ -173,6 +173,16 @@ void AMYPROJ2CharacterBase::OnInventoryInput(const FInputActionValue& Value)
 
 void AMYPROJ2CharacterBase::ToggleInventoryUI()
 {
+	if (InventoryWidgetInstance && InventoryWidgetInstance->IsInViewport())
+	{
+		InventoryWidgetInstance->RemoveFromParent();
+		return;
+	}
+	ShowInventoryUI();
+}
+
+void AMYPROJ2CharacterBase::ShowInventoryUI()
+{
 	// Only the owning client shows UI.
 	if (!IsLocallyControlled())
 	{
@@ -204,12 +214,7 @@ void AMYPROJ2CharacterBase::ToggleInventoryUI()
 		}
 	}
 
-	// Toggle visibility.
-	if (InventoryWidgetInstance->IsInViewport())
-	{
-		InventoryWidgetInstance->RemoveFromParent();
-	}
-	else
+	if (!InventoryWidgetInstance->IsInViewport())
 	{
 		InventoryWidgetInstance->AddToViewport(0);
 	}

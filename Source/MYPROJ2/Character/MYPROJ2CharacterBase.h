@@ -160,6 +160,9 @@ public:
 	/** M3: create/show/hide the inventory UI widget. Only runs on the owning client. */
 	void ToggleInventoryUI();
 
+	/** Shows the existing inventory UI without toggling it closed. */
+	void ShowInventoryUI();
+
 private:
 
 	/** M3: cached inventory widget instance. Created on first use. */

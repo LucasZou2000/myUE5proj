@@ -26,6 +26,10 @@ struct MYPROJ2_API FLootTableRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loot", meta = (ClampMin = "1"))
 	int32 MaxQuantity = 1;
 
+	/** Uses this row only to close a value gap after ordinary placements cannot fit. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loot|Value")
+	bool bCanFillValueGap = false;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Loot")
 	FGameplayTagContainer RequiredZoneTags;
 };
