@@ -40,11 +40,24 @@ public:
     UPROPERTY(EditDefaultsOnly) FName LootPoolId;
     UPROPERTY(EditDefaultsOnly, meta=(ClampMin="1", ClampMax="16")) int32 Rolls = 4;
     UPROPERTY(EditDefaultsOnly) TObjectPtr<UDataTable> LootTable;
-    UPROPERTY(EditDefaultsOnly) FIntPoint GridSize = FIntPoint(8, 6);
+    UPROPERTY(EditDefaultsOnly) FIntPoint GridSize = FIntPoint(5, 8);
+    UPROPERTY(EditDefaultsOnly) int32 BaseTargetValue = 100;
+    UPROPERTY(EditDefaultsOnly) float TargetValueVariance = 0.15f;
+    UPROPERTY(EditDefaultsOnly) FGameplayTagContainer ZoneTags;
 };
 ```
 
 Reject invalid rows at generation time: missing definition, non-positive weight, inverted quantity range, or an item footprint larger than the container. Log once per bad row.
+
+### M4 value-budget selection
+
+`UItemDefinition::LootValue` is the static per-unit value. On first open, the Server computes:
+
+```text
+target = BaseTargetValue * GameState.LootValueMultiplier * random(1 - variance, 1 + variance)
+```
+
+For each roll, rows in the matching pool whose `RequiredZoneTags` are contained by the container's `ZoneTags` participate. Their effective weight is `Weight * clamp(remainingBudget / Item.LootValue, 0.20, 2.0)`. This keeps base table weight authoritative while gently favouring entries appropriate to the remaining value budget. Quantity is sampled from the row range, then first merges into compatible stacks and places remaining stacks row-major; failed placement ends that roll without retry loops. M4's default container is **5 columns x 8 rows**. Future definitions may keep width 5 and choose any height through 10.
 
 ## Determinism
 
@@ -103,7 +116,7 @@ Interaction remains handled by `UInteractionComponent`. After Server acceptance,
 - `/Game/Raid/Data/Loot/DT_Loot_Test`
 - `/Game/Raid/Data/Loot/DA_Container_TestCrate`
 - `/Game/Raid/Blueprints/BP_LootContainer_TestCrate`
-- `/Game/Raid/UI/WBP_LootContainer`
+- `/Game/Raid/UI/WBP_LootContainer` (deferred from this implementation; C++ open notification and data binding surface are present)
 - Place two crates with unique `ContainerId` values in `L_Test_Network`.
 
 ## Implementation order
@@ -112,7 +125,7 @@ Interaction remains handled by `UInteractionComponent`. After Server acceptance,
 2. Add container Actor and reusable world inventory replication.
 3. Integrate `IInteractable` and first-open generation.
 4. Implement atomic transfer API and owned Controller RPCs.
-5. Add two-grid UI and MCP content.
+5. Create the test DataTable/definition/Blueprint and place two uniquely identified crates. UI is deliberately deferred; `ClientOpenLootContainer` is its integration point.
 6. Test late join and two-player race under network emulation.
 
 ## Acceptance criteria

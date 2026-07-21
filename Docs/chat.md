@@ -230,3 +230,41 @@ Remaining (M3 acceptance, pending Lucas's PIE):
 Next:
 
 - Lucas runs M3 acceptance PIE per checklist above. If all pass, M3 is done and we proceed to M4 (Loot Containers).
+
+## 2026-07-22  - Agent - M4 / container generation and transfer implementation
+
+Status: PARTIAL (C++ implementation complete; compile and PIE verification blocked by active UE Live Coding session; content assets and UI intentionally deferred).
+
+Changed:
+
+- `Docs/technical/m4-loot-containers.md`: default container grid corrected to 5x8; specifies the M4 target-value budget, map multiplier, zone-tag filtering, budget-aware weights, deterministic placement, and UI deferral.
+- `Docs/technical/gameplay-contracts.json`: `containerGrid` is now 5 columns x 8 rows.
+- `Source/MYPROJ2/Items/ItemDefinition.h`: adds static `LootValue` used only as a generation budget input.
+- `Source/MYPROJ2/Framework/MYPROJ2GameState.h/.cpp`, `MYPROJ2GameMode.cpp`: replicated per-raid `RaidSeed` and map-controlled `LootValueMultiplier`; GameMode assigns the seed once per hosted raid.
+- `Source/MYPROJ2/Loot/LootTypes.h`: DataTable row contract for pool, item ID, weight, quantities, and required zone tags.
+- `Source/MYPROJ2/Loot/LootContainerDefinition.h/.cpp`: Primary Data Asset for pool/table/rolls/5x8 grid/value budget/zone tags.
+- `Source/MYPROJ2/Loot/LootGenerationLibrary.h/.cpp`: Server-only deterministic local-stream generator. It validates rows, derives a seed from raid/container/version, applies value-aware weighted rolls, merges stacks, and row-major places within the grid.
+- `Source/MYPROJ2/Loot/LootContainer.h/.cpp`: replicated world Actor with 5x8 inventory, stable editor container ID, first-open generation, durable generated/open state, and `IInteractable` integration.
+- `Source/MYPROJ2/Inventory/InventoryComponent.h/.cpp`: `AuthorityTransferTo` stages the destination then commits both inventories atomically; no delegate is emitted between source and destination commit.
+- `Source/MYPROJ2/MYPROJ2PlayerController.h/.cpp`: owned `ServerTakeFromContainer` / `ServerPutIntoContainer` RPCs validate sequence, living pawn, generated container, range, and interaction LOS; client open/rejection hooks added.
+
+Contracts:
+
+- `ALootContainer` has no client-callable Server RPC. All mutations route through the owning `AMYPROJ2PlayerController`.
+- Generation is Server-only and `bGenerated`/`bHasBeenOpened` plus Fast Array inventory are durable replication state for late joins.
+- M4 does not implement a finished UI. `ClientOpenLootContainer(ALootContainer*)` is the UI handoff; no gameplay operation depends on it.
+
+Validation:
+
+- UHT processed all M4 headers successfully and generated 13 headers.
+- `Build.bat MYPROJ2Editor Win64 Development ... -waitmutex` did not reach C++ compilation because UE reports active Live Coding. Do not interpret this as a code compile result.
+
+Remaining:
+
+- Close UE or disable Live Coding, then build.
+- In editor create `DT_Loot_Test`, `DA_Container_TestCrate`, `BP_LootContainer_TestCrate`, set existing item `LootValue` values, and place one crate with a unique `ContainerId` in `L_Test_Network`.
+- Run host/client first-open, concurrent take, out-of-range/LOS rejection, and late-join acceptance. UI remains deferred by user direction.
+
+Next:
+
+- Compile M4 after Live Coding is disabled, address compiler errors if any, then create one crate test asset and run the two-player acceptance pass.

@@ -15,6 +15,29 @@ void AMYPROJ2GameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 	DOREPLIFETIME(AMYPROJ2GameState, RaidPhase);
 	DOREPLIFETIME(AMYPROJ2GameState, PhaseEndServerTime);
+	DOREPLIFETIME(AMYPROJ2GameState, LootValueMultiplier);
+	DOREPLIFETIME(AMYPROJ2GameState, RaidSeed);
+}
+
+void AMYPROJ2GameState::AuthoritySetLootValueMultiplier(float NewMultiplier)
+{
+	if (!HasAuthority())
+	{
+		UE_LOG(LogMYPROJ2Net, Warning, TEXT("AuthoritySetLootValueMultiplier called on non-authority. Ignored."));
+		return;
+	}
+
+	LootValueMultiplier = FMath::Max(0.0f, NewMultiplier);
+}
+
+void AMYPROJ2GameState::AuthoritySetRaidSeed(int32 NewRaidSeed)
+{
+	if (!HasAuthority())
+	{
+		UE_LOG(LogMYPROJ2Net, Warning, TEXT("AuthoritySetRaidSeed called on non-authority. Ignored."));
+		return;
+	}
+	RaidSeed = NewRaidSeed;
 }
 
 void AMYPROJ2GameState::AuthoritySetRaidPhase(ERaidPhase NewPhase, double NewPhaseEndServerTime)

@@ -4,7 +4,7 @@
     "playerGrid": { "columns": 10, "rows": 6 },
     "stashInitialGrid": { "columns": 10, "rows": 8 },
     "stashUpgradedGrid": { "columns": 12, "rows": 10 },
-    "containerGrid": { "columns": 8, "rows": 6 },
+    "containerGrid": { "columns": 5, "rows": 8 },
     "maxStackQuantity": 999,
     "maxTransactionDistanceCm": 250.0,
     "requestSequenceBits": 16

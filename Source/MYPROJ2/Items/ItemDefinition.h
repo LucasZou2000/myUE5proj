@@ -56,6 +56,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item", meta = (ClampMin = "1"))
 	int32 MaxStack = 1;
 
+	/**
+	 * Baseline raid value for loot budgeting. This is deliberately static item
+	 * data: container generation applies map/container multipliers separately.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Loot", meta = (ClampMin = "0"))
+	int32 LootValue = 1;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item")
 	FGameplayTagContainer ItemTags;
 

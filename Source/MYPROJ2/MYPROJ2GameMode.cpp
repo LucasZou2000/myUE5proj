@@ -20,6 +20,9 @@ void AMYPROJ2GameMode::BeginPlay()
 	if (AMYPROJ2GameState* GS = GetGameState<AMYPROJ2GameState>())
 	{
 		GS->AuthoritySetRaidPhase(ERaidPhase::Lobby, 0.0);
+		// One seed per hosted raid. Containers combine it with their stable IDs.
+		GS->AuthoritySetRaidSeed(static_cast<int32>(GetTypeHash(FGuid::NewGuid())));
+		GS->AuthoritySetLootValueMultiplier(1.0f);
 	}
 }
 

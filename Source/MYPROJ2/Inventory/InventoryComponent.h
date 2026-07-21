@@ -126,6 +126,15 @@ public:
 	 */
 	bool AuthorityTryRemove(const FGuid& InstanceId, int32 Quantity);
 
+	/**
+	 * Atomically transfers a full quantity to another authoritative inventory.
+	 * The destination is validated from a staged copy before either Fast Array
+	 * changes. An unset TargetPosition chooses deterministic first-fit.
+	 */
+	bool AuthorityTransferTo(UInventoryComponent* Destination, const FGuid& InstanceId,
+		int32 Quantity, const TOptional<FIntPoint>& TargetPosition,
+		bool bRotated, EInventoryRejectReason& OutReason);
+
 	//~ End Authority Mutators
 
 	//~ Begin RPC contract (m3-inventory-items.md)

@@ -390,6 +390,123 @@ bool UInventoryComponent::AuthorityTryRemove(const FGuid& InstanceId, int32 Quan
 	return true;
 }
 
+bool UInventoryComponent::AuthorityTransferTo(UInventoryComponent* Destination, const FGuid& InstanceId,
+	int32 Quantity, const TOptional<FIntPoint>& TargetPosition, bool bRotated, EInventoryRejectReason& OutReason)
+{
+	OutReason = EInventoryRejectReason::InvalidRequest;
+	AActor* SourceOwner = GetOwner();
+	AActor* DestinationOwner = Destination ? Destination->GetOwner() : nullptr;
+	if (!SourceOwner || !DestinationOwner || !SourceOwner->HasAuthority() || !DestinationOwner->HasAuthority() ||
+		Destination == this || Quantity <= 0)
+	{
+		return false;
+	}
+
+	FReplicatedInventoryEntry* Source = FindEntryMutable(InstanceId);
+	if (!Source || Source->Item.Quantity < Quantity)
+	{
+		OutReason = EInventoryRejectReason::MissingItem;
+		return false;
+	}
+	UItemDefinition* Definition = ResolveDefinition(Source->Item.DefinitionId);
+	if (!Definition)
+	{
+		OutReason = EInventoryRejectReason::InvalidDefinition;
+		return false;
+	}
+
+	// Stage the destination as plain items. No Fast Array mutation or delegate can
+	// occur before all quantities and placements have been proven valid.
+	TArray<FItemInstance> StagedItems;
+	StagedItems.Reserve(Destination->ReplicatedItems.Entries.Num() + 2);
+	for (const FReplicatedInventoryEntry& Entry : Destination->ReplicatedItems.Entries)
+	{
+		StagedItems.Add(Entry.Item);
+	}
+	int32 Remaining = Quantity;
+	const int32 MaxStack = FMath::Max(1, Definition->MaxStack);
+	for (FItemInstance& Entry : StagedItems)
+	{
+		if (Entry.DefinitionId != Source->Item.DefinitionId || Remaining <= 0)
+		{
+			continue;
+		}
+		const int32 Space = MaxStack - Entry.Quantity;
+		const int32 Moved = FMath::Min(Space, Remaining);
+		Entry.Quantity += Moved;
+		Remaining -= Moved;
+	}
+
+	const FIntPoint Footprint = Definition->GetEffectiveGridSize(bRotated);
+	TFunction<const FItemInstance&(const FItemInstance&)> GetItem = [](const FItemInstance& Item) -> const FItemInstance& { return Item; };
+	TFunction<FIntPoint(const FItemInstance&)> GetFootprint = [Destination](const FItemInstance& Item)
+	{
+		return Destination->GetEntryFootprint(Item);
+	};
+	bool bUsedExplicitPosition = false;
+	while (Remaining > 0)
+	{
+		const int32 StackQuantity = FMath::Min(Remaining, MaxStack);
+		FIntPoint Position;
+		if (TargetPosition.IsSet() && !bUsedExplicitPosition)
+		{
+			Position = TargetPosition.GetValue();
+			if (!FInventoryGridLibrary::IsInBounds(Destination->GetGridSize(), Position, Footprint) ||
+				FInventoryGridLibrary::WouldOverlap(StagedItems, GetItem, GetFootprint, Position, Footprint, FGuid()))
+			{
+				OutReason = EInventoryRejectReason::NoSpace;
+				return false;
+			}
+			bUsedExplicitPosition = true;
+		}
+		else if (!FInventoryGridLibrary::FindFirstFit(Destination->GetGridSize(), StagedItems, GetItem, GetFootprint, Footprint, Position))
+		{
+			OutReason = EInventoryRejectReason::NoSpace;
+			return false;
+		}
+		FItemInstance NewItem;
+		NewItem.InstanceId = FGuid::NewGuid();
+		NewItem.DefinitionId = Source->Item.DefinitionId;
+		NewItem.Quantity = StackQuantity;
+		NewItem.GridPosition = Position;
+		NewItem.bRotated = bRotated;
+		StagedItems.Add(NewItem);
+		Remaining -= StackQuantity;
+	}
+
+	// Commit source and destination back-to-back. Broadcast only after both are durable.
+	Source->Item.Quantity -= Quantity;
+	if (Source->Item.Quantity == 0)
+	{
+		for (int32 Index = 0; Index < ReplicatedItems.Entries.Num(); ++Index)
+		{
+			if (ReplicatedItems.Entries[Index].Item.InstanceId == InstanceId)
+			{
+				ReplicatedItems.Entries.RemoveAt(Index);
+				ReplicatedItems.MarkArrayDirty();
+				break;
+			}
+		}
+	}
+	else
+	{
+		ReplicatedItems.MarkItemDirty(*Source);
+	}
+
+	Destination->ReplicatedItems.Entries.Reset();
+	for (FItemInstance& Item : StagedItems)
+	{
+		FReplicatedInventoryEntry& Entry = Destination->ReplicatedItems.Entries.AddDefaulted_GetRef();
+		Entry.Item = MoveTemp(Item);
+		Entry.OwnerComponent = Destination;
+	}
+	Destination->ReplicatedItems.MarkArrayDirty();
+	OnInventoryChanged.Broadcast();
+	Destination->OnInventoryChanged.Broadcast();
+	OutReason = EInventoryRejectReason::None;
+	return true;
+}
+
 bool UInventoryComponent::AuthorityMoveItem(const FGuid& ItemId, FIntPoint Position, bool bRotated, EInventoryRejectReason& OutReason)
 {
 	FReplicatedInventoryEntry* Entry = FindEntryMutable(ItemId);
