@@ -43,6 +43,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Health")
 	float ApplyDamage(float DamageAmount);
 
+	/**
+	 * Server-only. Applies healing, clamps at MaxHealth, returns the new Health.
+	 * Authority-only; no client setter is exposed (m3-inventory-items.md).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	float AuthorityHeal(float HealAmount);
+
 	UFUNCTION(BlueprintPure, Category = "Health")
 	float GetHealth() const { return Health; }
 

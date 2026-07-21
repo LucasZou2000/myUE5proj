@@ -5,6 +5,7 @@
 #include "Character/MYPROJ2CharacterBase.h"
 #include "Network/MYPROJ2NetworkSettings.h"
 #include "Network/MYPROJ2NetworkTypes.h"
+#include "MYPROJ2CollisionChannels.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/PlayerController.h"
@@ -90,7 +91,9 @@ void UCombatComponent::TryFire()
 		: Owner->GetActorTransform().TransformPosition(FVector(62.5f, 18.f, -25.f));
 
 	FHitResult CursorHit;
-	const bool bHasCursorTarget = PC->GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
+	// Cursor targeting for aim uses the WeaponTrace channel so interactables
+	// (InteractionTrace-blockers) do not steal aim focus and vice versa.
+	const bool bHasCursorTarget = PC->GetHitResultUnderCursor(MYPROJ2_TRACE_CHANNEL_WEAPON, false, CursorHit);
 
 	// FireOrigin: actor origin (capsule centre, waist height). No vertical offset —
 	// visual offsets are presentation concerns that belong on the weapon mesh,
@@ -213,11 +216,11 @@ void UCombatComponent::ExecuteFire(const FFireStartInfo& StartInfo)
 	QueryParams.AddIgnoredActor(Owner);
 
 	FHitResult Hit;
-	// M2 uses ECC_Visibility as the hitscan channel. A custom WeaponTrace channel
-	// would require ProjectSettings->Collision wiring which is Editor-side; using
-	// Visibility keeps M2 self-contained. Both TestDamageTarget and player meshes
-	// default to blocking Visibility.
-	const ECollisionChannel FireChannel = ECC_Visibility;
+	// M3: hitscan uses the dedicated WeaponTrace channel (split from ECC_Visibility).
+	// WeaponTrace is blocked by BlockAll/BlockAllDynamic/Pawn/PhysicsActor profiles
+	// and ignored by Trigger/Spectator, matching the previous Visibility behavior
+	// for combat-relevant geometry while letting interactables opt out.
+	const ECollisionChannel FireChannel = MYPROJ2_TRACE_CHANNEL_WEAPON;
 	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, FireChannel, QueryParams);
 
 	// Apply damage on hit (server-authoritative).

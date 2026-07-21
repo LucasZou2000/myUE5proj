@@ -48,6 +48,29 @@ float UHealthComponent::ApplyDamage(float DamageAmount)
 	return Health;
 }
 
+float UHealthComponent::AuthorityHeal(float HealAmount)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		UE_LOG(LogMYPROJ2Combat, Warning, TEXT("AuthorityHeal called on non-authority; ignoring"));
+		return Health;
+	}
+
+	if (HealAmount <= 0.f || IsDead())
+	{
+		return Health;
+	}
+
+	const float Previous = Health;
+	Health = FMath::Min(MaxHealth, Health + HealAmount);
+
+	UE_LOG(LogMYPROJ2Combat, Verbose, TEXT("%s healed %.1f: %.1f -> %.1f"),
+		*GetNameSafe(Owner), HealAmount, Previous, Health);
+
+	return Health;
+}
+
 void UHealthComponent::OnRep_Health(float PreviousHealth)
 {
 	// Placeholder for M2 UI hook (Step 11) and future M4 death presentation.

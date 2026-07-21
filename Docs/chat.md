@@ -172,3 +172,61 @@ Remaining:
 Next:
 
 - Implement `Docs/technical/m3-inventory-items.md` from step 1 and stop at M3 acceptance.
+
+## 2026-07-21 - Agent - M3 / implementation and handoff
+
+Status: COMPLETE (pending Lucas's final M3 acceptance PIE)
+
+Changed:
+
+- `Config/DefaultEngine.ini`: added custom trace channels `WeaponTrace` (ECC_GameTraceChannel1) and `InteractionTrace` (ECC_GameTraceChannel2); default profile responses updated so BlockAll/BlockAllDynamic/Pawn/PhysicsActor block WeaponTrace, BlockAll/BlockAllDynamic block InteractionTrace. Added AssetManager `PrimaryAssetTypesToScan` for type `Item` scanning `/Game/Raid/Data/Items`.
+- `Source/MYPROJ2/MYPROJ2CollisionChannels.h`: new. `MYPROJ2_TRACE_CHANNEL_WEAPON` / `MYPROJ2_TRACE_CHANNEL_INTERACTION` macros map to ECC_GameTraceChannel1/2.
+- `Source/MYPROJ2/Combat/CombatComponent.cpp`: cursor aim + hitscan migrated from `ECC_Visibility` to `MYPROJ2_TRACE_CHANNEL_WEAPON`.
+- `Source/MYPROJ2/Interaction/InteractionComponent.cpp`: cursor focus + server LOS migrated from `ECC_Visibility` to `MYPROJ2_TRACE_CHANNEL_INTERACTION`.
+- `Source/MYPROJ2/Interaction/TestInteractable.cpp`: mesh now also blocks `InteractionTrace`.
+- `Source/MYPROJ2/Combat/TestDamageTarget.cpp`: mesh now also blocks `WeaponTrace`.
+- `Source/MYPROJ2/Character/MYPROJ2CharacterBase.cpp`: capsule now also blocks `WeaponTrace`.
+- `Source/MYPROJ2/MYPROJ2.Build.cs`: added `GameplayTags` and `NetCore` module dependencies.
+- `Source/MYPROJ2/Items/ItemDefinition.h/.cpp`: new. `UItemDefinition : UPrimaryDataAsset` (initially `Abstract`, later fixed) with `ItemId`, `DisplayName`, `Icon`, `ItemType`, `GridSize`, `MaxStack`, `ItemTags`; Primary Asset ID = `Item:<ItemId>`. `UConsumableItemDefinition` adds `HealAmount` for M3 Medkit.
+- `Source/MYPROJ2/Inventory/InventoryTypes.h`: new. `FItemInstance` (InstanceId, DefinitionId, Quantity, GridPosition, bRotated). `FReplicatedInventoryEntry : FFastArraySerializerItem` and `FReplicatedInventoryList : FFastArraySerializer` with `NetDeltaSerialize` + `TStructOpsTypeTraits` specialization. `EInventoryRejectReason` enum (includes `FullHealth` per acceptance criterion).
+- `Source/MYPROJ2/Inventory/InventoryGridLibrary.h/.cpp`: new. Pure functions: `IsInBounds`, `FootprintsOverlap`, `WouldOverlap`, `FindFirstFit` (deterministic row-major), `ComputeMerge`. No UObject/global lookups.
+- `Source/MYPROJ2/Inventory/InventoryComponent.h/.cpp`: new. Server-authoritative `UInventoryComponent` with `ReplicatedItems` Fast Array; authority-only `AuthorityTryAdd/AuthorityTryRemove/AuthorityMoveItem/AuthoritySplitStack/AuthorityMergeStacks/AuthorityUseItem`; RPC contract `ServerMoveItem/ServerSplitStack/ServerMergeStacks/ServerUseItem/ClientInventoryRejected` with `uint16` monotonic request ids and wrap-safe stale-request rejection. Medkit use resolves `UConsumableItemDefinition` and calls `UHealthComponent::AuthorityHeal`. Editor-only `bSeedTestItems`+`SeedItems` grant debug items on Server. Added `GetInventoryDisplayText()`, `GetInventoryEntryStrings()`, `DebugGrantSeedItems()` for UMG data binding.
+- `Source/MYPROJ2/Combat/HealthComponent.h/.cpp`: added authority-only `AuthorityHeal(float)` clamped to `MaxHealth`; refuses to heal when dead.
+- `Source/MYPROJ2/MYPROJ2PlayerController.h/.cpp`: now owns a `UInventoryComponent` subobject created in the constructor. Controller exists only on Server + owning client, so Fast Array is private without per-connection filters.
+- `Source/MYPROJ2/Character/MYPROJ2CharacterBase.h/.cpp`: added `InventoryAction` input binding and `ToggleInventoryUI()` (lazy-creates `WBP_InventoryGrid` on first I-key press).
+
+Assets created (MCP + manual):
+
+- `/Game/Raid/Data/Items/DA_Item_Scrap` (1x1, MaxStack=20, Material)
+- `/Game/Raid/Data/Items/DA_Item_Medkit` (2x1, MaxStack=3, Consumable, HealAmount=35)
+- `/Game/Raid/Input/IA_Inventory` (Digital)
+- `/Game/Raid/UI/WBP_InventoryGrid` (Border + VerticalBox + TextBlock binding to `GetInventoryDisplayText`)
+- `IMC_Raid` updated with `IA_Inventory` -> `I` key mapping
+- `BP_RaidCharacter` updated with `InventoryAction` property assigned
+
+Contracts:
+
+- `EInventoryRejectReason` adds `FullHealth` (not in the spec's enum list) so Medkit use on a full-health pawn is rejected without state mutation, per the acceptance criterion "full-health Medkit use does not mutate state."
+- `UInventoryComponent` lives on `AMYPROJ2PlayerController` per the M3 architecture decision; same component is reusable on world containers in M4.
+- `PrimaryAssetTypesToScan` registers type `Item` at `/Game/Raid/Data/Items`. `UItemDefinition::GetPrimaryAssetId()` returns `Item:<ItemId>`.
+- Request-id dedupe is monotonic `uint16` with wrap-safe comparison (distance in [-32768, 32767]).
+- `UItemDefinition` was initially marked `Abstract`, which prevented `DA_Item_Scrap` from saving; fixed by removing `Abstract` and recompiling.
+
+Validation:
+
+- `read_lints` on Source/MYPROJ2: 0 diagnostics.
+- `Build.bat MYPROJ2Editor Win64 Development -waitmutex`: SUCCEEDED (multiple times; fixes included template lambda deduction, TObjectPtr ambiguity, `Abstract` removal).
+- MCP asset creation: `DA_Item_Scrap`, `DA_Item_Medkit` created and saved under `/Game/Raid/Data/Items` (Scrap initially failed due to `Abstract`, succeeded after fix).
+- Lucas manually wired `IA_Inventory` -> `I` key in `IMC_Raid`, assigned `InventoryAction` in `BP_RaidCharacter`, built `WBP_InventoryGrid` UI with Binding, and verified M0/M1/M2 still work + inventory UI toggles on/off.
+- UI displays inventory contents via `GetInventoryDisplayText()` binding.
+
+Remaining (M3 acceptance, pending Lucas's PIE):
+
+- AssetManager scan verification: `?x?` should become `1x1`/`2x1` after Editor restart.
+- SeedItems population: `BP_RaidPlayerController` -> `Inventory Component` -> `bSeedTestItems` + `SeedItems` should contain both `DA_Item_Scrap` and `DA_Item_Medkit`.
+- Two-player PIE: owner privacy (Host/Client see own inventory), Medkit use (heal + consume), FullHealth rejection, M1/M2 regression.
+- Fast Array delta verification (optional technical check).
+
+Next:
+
+- Lucas runs M3 acceptance PIE per checklist above. If all pass, M3 is done and we proceed to M4 (Loot Containers).

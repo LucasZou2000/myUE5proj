@@ -2,6 +2,7 @@
 
 #include "Interaction/TestInteractable.h"
 #include "Interaction/InteractionComponent.h"
+#include "MYPROJ2CollisionChannels.h"
 #include "Components/StaticMeshComponent.h"
 #include "Net/UnrealNetwork.h"
 
@@ -13,10 +14,13 @@ ATestInteractable::ATestInteractable()
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	RootComponent = Mesh;
 
-	// Ensure the interactable is hit by the local focus trace and the server LOS check.
+	// M3: block the dedicated InteractionTrace channel so the focus and LOS
+	// checks find this actor. Visibility blocking is retained for legacy aim
+	// code paths that still sample it (e.g. camera-based picking helpers).
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	Mesh->SetCollisionResponseToChannel(MYPROJ2_TRACE_CHANNEL_INTERACTION, ECR_Block);
 
 	// Use the built-in cube so the test map does not require external content.
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));

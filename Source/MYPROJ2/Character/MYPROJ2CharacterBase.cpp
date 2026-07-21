@@ -4,8 +4,10 @@
 #include "Interaction/InteractionComponent.h"
 #include "Combat/CombatComponent.h"
 #include "Combat/HealthComponent.h"
+#include "Inventory/InventoryComponent.h"
 #include "Network/MYPROJ2NetworkTypes.h"
 #include "Network/MYPROJ2NetworkSettings.h"
+#include "MYPROJ2CollisionChannels.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/DecalComponent.h"
@@ -17,6 +19,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
+#include "Blueprint/UserWidget.h"
 #include "Net/UnrealNetwork.h"
 
 AMYPROJ2CharacterBase::AMYPROJ2CharacterBase()
@@ -30,10 +33,12 @@ AMYPROJ2CharacterBase::AMYPROJ2CharacterBase()
 
 	// Capsule.
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-	// M2: capsule blocks Visibility so other players' hitscan can hit us.
-	// (Default pawn capsule ignores Visibility for the template's mouse-picking
-	// scenario; we explicitly enable it here for combat.)
+	// M2/M3: capsule blocks Visibility and the dedicated WeaponTrace channel so
+	// other players' hitscan can hit us. (Default pawn capsule ignores Visibility
+	// for the template's mouse-picking scenario; we explicitly enable both here
+	// for combat.)
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(MYPROJ2_TRACE_CHANNEL_WEAPON, ECR_Block);
 
 	// Rotation model: capsule yaw is driven by ServerAimYaw (server-authoritative),
 	// not by movement. Visual root yaws instantly on the owning client and smoothly
@@ -122,6 +127,10 @@ void AMYPROJ2CharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		{
 			EIC->BindAction(FireAction, ETriggerEvent::Started, this, &AMYPROJ2CharacterBase::OnFireInput);
 		}
+		if (InventoryAction)
+		{
+			EIC->BindAction(InventoryAction, ETriggerEvent::Started, this, &AMYPROJ2CharacterBase::OnInventoryInput);
+		}
 	}
 }
 
@@ -154,6 +163,55 @@ void AMYPROJ2CharacterBase::OnFireInput(const FInputActionValue& Value)
 	if (CombatComponent)
 	{
 		CombatComponent->TryFire();
+	}
+}
+
+void AMYPROJ2CharacterBase::OnInventoryInput(const FInputActionValue& Value)
+{
+	ToggleInventoryUI();
+}
+
+void AMYPROJ2CharacterBase::ToggleInventoryUI()
+{
+	// Only the owning client shows UI.
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		return;
+	}
+
+	// Lazy-create the widget on first toggle.
+	if (!InventoryWidgetInstance)
+	{
+		// Load the widget class from the asset registry. The path is stable
+		// because M3 places WBP_InventoryGrid under /Game/Raid/UI/.
+		const TSoftClassPtr<UUserWidget> WidgetClassPtr(FSoftObjectPath(TEXT("/Game/Raid/UI/WBP_InventoryGrid.WBP_InventoryGrid_C")));
+		UClass* WidgetClass = WidgetClassPtr.LoadSynchronous();
+		if (!WidgetClass)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("MYPROJ2: WBP_InventoryGrid class not found at /Game/Raid/UI/WBP_InventoryGrid"));
+			return;
+		}
+		InventoryWidgetInstance = CreateWidget<UUserWidget>(PC, WidgetClass);
+		if (!InventoryWidgetInstance)
+		{
+			return;
+		}
+	}
+
+	// Toggle visibility.
+	if (InventoryWidgetInstance->IsInViewport())
+	{
+		InventoryWidgetInstance->RemoveFromParent();
+	}
+	else
+	{
+		InventoryWidgetInstance->AddToViewport(0);
 	}
 }
 

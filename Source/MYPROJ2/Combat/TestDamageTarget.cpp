@@ -1,5 +1,6 @@
 #include "Combat/TestDamageTarget.h"
 #include "Combat/HealthComponent.h"
+#include "MYPROJ2CollisionChannels.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -16,11 +17,14 @@ ATestDamageTarget::ATestDamageTarget()
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
 
-	// Query-only; no Pawn block. Blocks Visibility so hitscan finds it.
+	// Query-only; no Pawn block. M3: blocks the dedicated WeaponTrace channel so
+	// CombatComponent hitscan finds it; Visibility blocking is kept for legacy
+	// camera/aim code paths that still sample it.
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Mesh->SetCollisionObjectType(ECC_WorldStatic);
 	Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	Mesh->SetCollisionResponseToChannel(MYPROJ2_TRACE_CHANNEL_WEAPON, ECR_Block);
 	Mesh->SetGenerateOverlapEvents(false);
 
 	// Use engine cube so no external content needed.

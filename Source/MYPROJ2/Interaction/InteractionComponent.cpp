@@ -4,6 +4,7 @@
 #include "Interaction/Interactable.h"
 #include "Network/MYPROJ2NetworkTypes.h"
 #include "Network/MYPROJ2NetworkSettings.h"
+#include "MYPROJ2CollisionChannels.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
@@ -79,8 +80,9 @@ AActor* UInteractionComponent::FindFocusTarget(FHitResult& OutHit) const
 		return nullptr;
 	}
 
-	// Hit under cursor using visibility channel; interactables are expected to block Visibility.
-	if (!PC->GetHitResultUnderCursor(ECC_Visibility, false, OutHit))
+	// Hit under cursor using the dedicated InteractionTrace channel. Interactables
+	// must block InteractionTrace (BlockAll/BlockAllDynamic profiles do by default).
+	if (!PC->GetHitResultUnderCursor(MYPROJ2_TRACE_CHANNEL_INTERACTION, false, OutHit))
 	{
 		return nullptr;
 	}
@@ -167,12 +169,12 @@ void UInteractionComponent::ServerTryInteract_Implementation(AActor* Target, int
 		return;
 	}
 
-	// Server-side LOS check (channel = Visibility; interactables must block it).
+	// Server-side LOS check on the InteractionTrace channel; interactables must block it.
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(InteractLOS), false, RequestingChar);
 	FHitResult LOSHit;
 	const FVector Start = RequestingChar->GetActorLocation();
 	const FVector End = Target->GetActorLocation();
-	const bool bBlocked = GetWorld()->LineTraceSingleByChannel(LOSHit, Start, End, ECC_Visibility, Params);
+	const bool bBlocked = GetWorld()->LineTraceSingleByChannel(LOSHit, Start, End, MYPROJ2_TRACE_CHANNEL_INTERACTION, Params);
 	if (bBlocked && LOSHit.GetActor() != Target)
 	{
 		ClientInteractionRejected(Target, EInteractionRejectReason::Obstructed);

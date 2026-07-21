@@ -3,11 +3,16 @@
 #include "MYPROJ2PlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
+#include "Inventory/InventoryComponent.h"
 
 AMYPROJ2PlayerController::AMYPROJ2PlayerController()
 {
 	bShowMouseCursor = true;
 	DefaultMouseCursor = EMouseCursor::Default;
+
+	// M3: raid inventory lives on the controller so it survives pawn respawn
+	// and is private to Server + owning client.
+	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 }
 
 void AMYPROJ2PlayerController::BeginPlay()

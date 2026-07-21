@@ -21,7 +21,9 @@ public class MYPROJ2 : ModuleRules
 			"Niagara",
 			"UMG",
 			"Slate",
-			"DeveloperSettings"
+			"DeveloperSettings",
+			"GameplayTags",
+			"NetCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

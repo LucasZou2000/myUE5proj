@@ -149,4 +149,20 @@ public:
 	/** Enhanced Input action: fire weapon (Digital). M2. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<UInputAction> FireAction;
+
+	/** Enhanced Input action: toggle inventory UI (Digital). M3. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> InventoryAction;
+
+	/** Bound to IA_Inventory (Digital). M3. */
+	void OnInventoryInput(const FInputActionValue& Value);
+
+	/** M3: create/show/hide the inventory UI widget. Only runs on the owning client. */
+	void ToggleInventoryUI();
+
+private:
+
+	/** M3: cached inventory widget instance. Created on first use. */
+	UPROPERTY(Transient)
+	TObjectPtr<class UUserWidget> InventoryWidgetInstance;
 };
