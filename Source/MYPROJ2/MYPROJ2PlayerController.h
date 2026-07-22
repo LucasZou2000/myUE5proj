@@ -11,6 +11,8 @@
 class UInputMappingContext;
 class UInventoryComponent;
 class ALootContainer;
+class UBaseStashWidget;
+struct FRaidSettlementPayload;
 
 /**
  * Top-down player controller (M1).
@@ -41,6 +43,7 @@ protected:
 
 	/** BeginPlay override */
 	virtual void BeginPlay() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/** Setup input bindings */
 	virtual void SetupInputComponent() override;
@@ -68,6 +71,37 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientLootTransferRejected(uint16 RequestId, EInventoryRejectReason Reason);
 
+	/** Server validates and settles this player's successful extraction. */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Raid")
+	void ServerRequestExtraction();
+
+	/** Server-to-owner confirmation. Only this client writes its local profile. */
+	UFUNCTION(Client, Reliable)
+	void ClientFinalizeRaidSettlement(const FRaidSettlementPayload& Settlement);
+
+	UFUNCTION(BlueprintPure, Category = "Raid|Currency")
+	int64 GetCarriedCurrency() const { return CarriedCurrency; }
+
+	/** Server-only currency mutation used by game mode settlement/loadout handoff. */
+	void AuthoritySetCarriedCurrency(int64 NewCurrency);
+
+	/** Opens the local base preparation overlay. Also available through the `OpenBaseStash` console command. */
+	UFUNCTION(BlueprintCallable, Category = "Base")
+	void OpenBaseStashUI();
+
+	UFUNCTION(Exec)
+	void OpenBaseStash();
+
+	/** Test-only console bridge until an extraction Actor is added. */
+	UFUNCTION(Exec)
+	void DebugExtract();
+
+	UFUNCTION(Exec)
+	void DebugKillRaid();
+
+	UFUNCTION(Exec)
+	void DebugGrantStashCurrency(int64 Amount);
+
 	/** Starts the local presentation delay when the player sends an interaction request. */
 	void BeginLootOpenDelay(ALootContainer* Container);
 
@@ -81,6 +115,12 @@ private:
 	TWeakObjectPtr<ALootContainer> PendingLootContainer;
 	FTimerHandle LootOpenDelayTimer;
 	bool bLootOpenAcknowledged = false;
+
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Raid|Currency", meta = (AllowPrivateAccess = "true"))
+	int64 CarriedCurrency = 0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBaseStashWidget> BaseStashWidget;
 
 	void CompleteLootOpenDelay();
 	void ShowLootContainer(ALootContainer* Container);

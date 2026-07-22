@@ -135,6 +135,12 @@ public:
 		int32 Quantity, const TOptional<FIntPoint>& TargetPosition,
 		bool bRotated, EInventoryRejectReason& OutReason);
 
+	/** Replaces all entries after complete grid/definition validation. Used only for local raid loadout handoff. */
+	bool AuthorityReplaceAll(const TArray<FItemInstance>& Items, EInventoryRejectReason& OutReason);
+
+	/** Clears all carried items as one authoritative mutation. Used by raid settlement. */
+	void AuthorityClearAll();
+
 	//~ End Authority Mutators
 
 	//~ Begin RPC contract (m3-inventory-items.md)

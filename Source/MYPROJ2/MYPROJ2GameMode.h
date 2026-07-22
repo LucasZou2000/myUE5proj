@@ -9,6 +9,7 @@
 
 class AMYPROJ2GameState;
 class AMYPROJ2PlayerState;
+class AMYPROJ2PlayerController;
 
 /**
  *  Simple Game Mode for a top-down perspective game
@@ -37,4 +38,10 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Raid")
 	void SetRaidPhase(ERaidPhase NewPhase, double NewPhaseEndServerTime);
+
+	/** Server-only success settlement. M8 will call this from an extraction point. */
+	void AuthorityExtractPlayer(AMYPROJ2PlayerController* PlayerController);
+
+	/** Server-only death settlement invoked by UHealthComponent when health reaches zero. */
+	void AuthorityHandlePlayerDeath(AMYPROJ2PlayerController* PlayerController);
 };

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "inventory": {
     "playerGrid": { "columns": 10, "rows": 6 },
-    "stashInitialGrid": { "columns": 10, "rows": 8 },
-    "stashUpgradedGrid": { "columns": 12, "rows": 10 },
+    "stashInitialGrid": { "columns": 5, "rows": 20 },
+    "stashUpgradedGrid": { "columns": 5, "rows": 20 },
     "containerGrid": { "columns": 5, "rows": 8 },
     "maxStackQuantity": 999,
     "maxTransactionDistanceCm": 250.0,
@@ -25,7 +25,7 @@
   "save": {
     "slot": "MYPROJ2_Profile_0",
     "backupSlot": "MYPROJ2_Profile_0_Backup",
-    "currentVersion": 1,
+    "currentVersion": 2,
     "baseMap": "/Game/Raid/Maps/L_Base_Graybox"
   },
   "weapon": {

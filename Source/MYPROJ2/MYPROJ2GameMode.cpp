@@ -3,6 +3,10 @@
 #include "MYPROJ2GameMode.h"
 #include "Framework/MYPROJ2GameState.h"
 #include "Framework/MYPROJ2PlayerState.h"
+#include "Inventory/InventoryComponent.h"
+#include "MYPROJ2PlayerController.h"
+#include "Persistence/ProfileSubsystem.h"
+#include "Persistence/ProfileSaveTypes.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 
@@ -41,6 +45,34 @@ void AMYPROJ2GameMode::PostLogin(APlayerController* NewPlayer)
 		PS->AuthorityAssignRaidPlayerId(FGuid::NewGuid());
 	}
 
+	// M5's base/profile flow is explicitly local. A future multiplayer deploy
+	// exchange must carry a Server-validated payload instead of reading a client save.
+	if (GetNetMode() == NM_Standalone)
+	{
+		if (AMYPROJ2PlayerController* RaidController = Cast<AMYPROJ2PlayerController>(NewPlayer))
+		{
+			if (UProfileSubsystem* Profile = GetGameInstance()->GetSubsystem<UProfileSubsystem>())
+			{
+				FPreparedRaidLoadout Loadout;
+				if (Profile->ConsumePendingRaidLoadout(Loadout))
+				{
+					EInventoryRejectReason Reason = EInventoryRejectReason::None;
+					if (RaidController->GetInventoryComponent()->AuthorityReplaceAll(Loadout.Inventory.Items, Reason))
+					{
+						RaidController->AuthoritySetCarriedCurrency(Loadout.Currency);
+						UE_LOG(LogMYPROJ2Net, Log, TEXT("Applied local prepared raid loadout: %d stacks, currency=%lld."),
+							Loadout.Inventory.Items.Num(), Loadout.Currency);
+					}
+					else
+					{
+						UE_LOG(LogMYPROJ2Net, Error, TEXT("Prepared raid loadout rejected by runtime inventory: reason=%d."),
+							static_cast<int32>(Reason));
+					}
+				}
+			}
+		}
+	}
+
 	UE_LOG(LogMYPROJ2Net, Log, TEXT("PostLogin: %s (RaidPlayerId=%s) joined. Players=%d"),
 		NewPlayer ? *NewPlayer->GetName() : TEXT("<null>"),
 		PS ? *PS->GetRaidPlayerId().ToString() : TEXT("<none>"),
@@ -66,4 +98,53 @@ void AMYPROJ2GameMode::SetRaidPhase(ERaidPhase NewPhase, double NewPhaseEndServe
 	{
 		GS->AuthoritySetRaidPhase(NewPhase, NewPhaseEndServerTime);
 	}
+}
+
+void AMYPROJ2GameMode::AuthorityExtractPlayer(AMYPROJ2PlayerController* PlayerController)
+{
+	if (!PlayerController)
+	{
+		return;
+	}
+	AMYPROJ2PlayerState* PlayerState = PlayerController->GetPlayerState<AMYPROJ2PlayerState>();
+	if (PlayerState && PlayerState->GetLifeState() != EPlayerLifeState::Alive)
+	{
+		return;
+	}
+	FRaidSettlementPayload Settlement;
+	Settlement.bExtracted = true;
+	Settlement.CarriedCurrency = PlayerController->GetCarriedCurrency();
+	for (const FReplicatedInventoryEntry& Entry : PlayerController->GetInventoryComponent()->GetEntries())
+	{
+		Settlement.Items.Add(Entry.Item);
+	}
+	PlayerController->GetInventoryComponent()->AuthorityClearAll();
+	PlayerController->AuthoritySetCarriedCurrency(0);
+	if (PlayerState)
+	{
+		PlayerState->AuthoritySetLifeState(EPlayerLifeState::Extracted);
+	}
+	PlayerController->ClientFinalizeRaidSettlement(Settlement);
+}
+
+void AMYPROJ2GameMode::AuthorityHandlePlayerDeath(AMYPROJ2PlayerController* PlayerController)
+{
+	if (!PlayerController)
+	{
+		return;
+	}
+	AMYPROJ2PlayerState* PlayerState = PlayerController->GetPlayerState<AMYPROJ2PlayerState>();
+	if (PlayerState && PlayerState->GetLifeState() != EPlayerLifeState::Alive)
+	{
+		return;
+	}
+	PlayerController->GetInventoryComponent()->AuthorityClearAll();
+	PlayerController->AuthoritySetCarriedCurrency(0);
+	if (PlayerState)
+	{
+		PlayerState->AuthoritySetLifeState(EPlayerLifeState::Dead);
+	}
+	FRaidSettlementPayload Settlement;
+	Settlement.bExtracted = false;
+	PlayerController->ClientFinalizeRaidSettlement(Settlement);
 }

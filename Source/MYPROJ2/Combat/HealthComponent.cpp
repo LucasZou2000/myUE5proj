@@ -1,4 +1,7 @@
 #include "Combat/HealthComponent.h"
+#include "Character/MYPROJ2CharacterBase.h"
+#include "MYPROJ2GameMode.h"
+#include "MYPROJ2PlayerController.h"
 #include "Network/MYPROJ2NetworkTypes.h"
 #include "Net/UnrealNetwork.h"
 
@@ -44,6 +47,19 @@ float UHealthComponent::ApplyDamage(float DamageAmount)
 
 	UE_LOG(LogMYPROJ2Combat, Verbose, TEXT("%s took %.1f damage: %.1f -> %.1f"),
 		*GetNameSafe(Owner), DamageAmount, Previous, Health);
+	if (Previous > 0.0f && Health <= 0.0f)
+	{
+		if (AMYPROJ2CharacterBase* Character = Cast<AMYPROJ2CharacterBase>(Owner))
+		{
+			if (AMYPROJ2PlayerController* RaidController = Cast<AMYPROJ2PlayerController>(Character->GetController()))
+			{
+				if (AMYPROJ2GameMode* RaidGameMode = Owner->GetWorld()->GetAuthGameMode<AMYPROJ2GameMode>())
+				{
+					RaidGameMode->AuthorityHandlePlayerDeath(RaidController);
+				}
+			}
+		}
+	}
 
 	return Health;
 }

@@ -1,18 +1,26 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "MYPROJ2PlayerController.h"
+#include "MYPROJ2.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "Character/MYPROJ2CharacterBase.h"
+#include "Combat/HealthComponent.h"
+#include "Base/BaseStashWidget.h"
+#include "Framework/MYPROJ2PlayerState.h"
 #include "Inventory/InventoryComponent.h"
 #include "Inventory/InventoryTypes.h"
 #include "Loot/LootContainer.h"
 #include "MYPROJ2CollisionChannels.h"
 #include "Network/MYPROJ2NetworkSettings.h"
+#include "Persistence/ProfileSubsystem.h"
+#include "Persistence/ProfileSaveTypes.h"
+#include "MYPROJ2GameMode.h"
 #include "Combat/HealthComponent.h"
 #include "GameFramework/Character.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "Net/UnrealNetwork.h"
 
 AMYPROJ2PlayerController::AMYPROJ2PlayerController()
 {
@@ -27,6 +35,12 @@ AMYPROJ2PlayerController::AMYPROJ2PlayerController()
 void AMYPROJ2PlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+}
+
+void AMYPROJ2PlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AMYPROJ2PlayerController, CarriedCurrency);
 }
 
 void AMYPROJ2PlayerController::SetupInputComponent()
@@ -184,4 +198,97 @@ void AMYPROJ2PlayerController::ShowLootContainer(ALootContainer* Container)
 void AMYPROJ2PlayerController::ClientLootTransferRejected_Implementation(uint16 RequestId, EInventoryRejectReason Reason)
 {
 	UE_LOG(LogTemp, Verbose, TEXT("Loot transfer rejected (request=%u, reason=%d)."), RequestId, static_cast<int32>(Reason));
+}
+
+void AMYPROJ2PlayerController::AuthoritySetCarriedCurrency(int64 NewCurrency)
+{
+	if (HasAuthority())
+	{
+		CarriedCurrency = FMath::Max<int64>(0, NewCurrency);
+	}
+}
+
+void AMYPROJ2PlayerController::ServerRequestExtraction_Implementation()
+{
+	if (AMYPROJ2GameMode* RaidGameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AMYPROJ2GameMode>() : nullptr)
+	{
+		RaidGameMode->AuthorityExtractPlayer(this);
+	}
+}
+
+void AMYPROJ2PlayerController::ClientFinalizeRaidSettlement_Implementation(const FRaidSettlementPayload& Settlement)
+{
+	if (UProfileSubsystem* ProfileSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UProfileSubsystem>() : nullptr)
+	{
+		ProfileSubsystem->ApplyRaidSettlement(Settlement);
+	}
+	OpenBaseStashUI();
+}
+
+void AMYPROJ2PlayerController::OpenBaseStashUI()
+{
+	if (!IsLocalPlayerController())
+	{
+		UE_LOG(LogMYPROJ2, Warning, TEXT("OpenBaseStashUI ignored on a non-local controller."));
+		return;
+	}
+	if (!BaseStashWidget)
+	{
+		BaseStashWidget = CreateWidget<UBaseStashWidget>(this, UBaseStashWidget::StaticClass());
+		UE_LOG(LogMYPROJ2, Log, TEXT("Base stash widget created: %s"), *GetNameSafe(BaseStashWidget));
+	}
+	if (BaseStashWidget)
+	{
+		BaseStashWidget->InitializeForController(this);
+		BaseStashWidget->SetVisibility(ESlateVisibility::Visible);
+		if (!BaseStashWidget->IsInViewport())
+		{
+			BaseStashWidget->AddToViewport(30);
+			UE_LOG(LogMYPROJ2, Log, TEXT("Base stash widget added to viewport."));
+		}
+	}
+	else
+	{
+		UE_LOG(LogMYPROJ2, Error, TEXT("Failed to create base stash widget."));
+	}
+}
+
+void AMYPROJ2PlayerController::OpenBaseStash()
+{
+	OpenBaseStashUI();
+}
+
+void AMYPROJ2PlayerController::DebugExtract()
+{
+	if (IsLocalPlayerController())
+	{
+		ServerRequestExtraction();
+	}
+}
+
+void AMYPROJ2PlayerController::DebugKillRaid()
+{
+	if (!IsLocalPlayerController())
+	{
+		return;
+	}
+	if (AMYPROJ2CharacterBase* RaidCharacter = Cast<AMYPROJ2CharacterBase>(GetPawn()))
+	{
+		if (UHealthComponent* Health = RaidCharacter->GetHealthComponent())
+		{
+			// Health applies damage only on the Server; this command is for Standalone PIE acceptance.
+			Health->ApplyDamage(Health->GetMaxHealth());
+		}
+	}
+}
+
+void AMYPROJ2PlayerController::DebugGrantStashCurrency(int64 Amount)
+{
+	if (IsLocalPlayerController())
+	{
+		if (UProfileSubsystem* ProfileSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UProfileSubsystem>() : nullptr)
+		{
+			ProfileSubsystem->DebugGrantStashCurrency(Amount);
+		}
+	}
 }
