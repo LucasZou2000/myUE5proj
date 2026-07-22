@@ -12,6 +12,7 @@ class UInputMappingContext;
 class UInventoryComponent;
 class ALootContainer;
 class UBaseStashWidget;
+enum class EWeaponPartSlot : uint8;
 struct FRaidSettlementPayload;
 
 /**
@@ -101,6 +102,22 @@ public:
 
 	UFUNCTION(Exec)
 	void DebugGrantStashCurrency(int64 Amount);
+
+	/** M6 no-UI verification commands. Slot uses EWeaponPartSlot numeric order. */
+	UFUNCTION(Exec)
+	void DebugInstallWeaponPart(int32 Slot);
+
+	UFUNCTION(Exec)
+	void DebugRemoveWeaponPart(int32 Slot);
+
+	UFUNCTION(Exec)
+	void DebugWeaponStats();
+
+	UFUNCTION(Exec)
+	void DebugGrantWeaponTestParts();
+
+	UFUNCTION(Server, Reliable)
+	void ServerDebugGrantWeaponTestParts();
 
 	/** Starts the local presentation delay when the player sends an interaction request. */
 	void BeginLootOpenDelay(ALootContainer* Container);

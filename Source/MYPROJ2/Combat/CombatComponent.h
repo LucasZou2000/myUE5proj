@@ -3,10 +3,12 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Combat/CombatTypes.h"
+#include "Weapons/WeaponBuildTypes.h"
 #include "CombatComponent.generated.h"
 
 class UWeaponData;
 class AMYPROJ2Weapon;
+class UInventoryComponent;
 
 /**
  * Authoritative fire validation + ammo pool. Lives on the owning Character.
@@ -41,6 +43,15 @@ public:
 	/** Current ammo. Replicated to owner only per M2 doc. */
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentAmmo, BlueprintReadOnly, Category = "Combat")
 	int32 CurrentAmmo = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_InstalledParts, BlueprintReadOnly, Category = "Weapon Assembly")
+	TArray<FInstalledWeaponPart> InstalledParts;
+
+	UPROPERTY(ReplicatedUsing = OnRep_DerivedStats, BlueprintReadOnly, Category = "Weapon Assembly")
+	FWeaponStatBlock DerivedStats;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Assembly|Debug")
+	bool bAllowRaidAssemblyForTesting = true;
 
 	//~ End Replicated state
 
@@ -79,10 +90,27 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Combat")
 	void TryFire();
 
+	UFUNCTION(Server, Reliable)
+	void ServerInstallPart(FGuid InventoryItemId, EWeaponPartSlot Slot, uint16 RequestId);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRemovePart(EWeaponPartSlot Slot, uint16 RequestId);
+
+	UFUNCTION(Client, Reliable)
+	void ClientAssemblyRejected(uint16 RequestId, EWeaponAssemblyRejectReason Reason);
+
+	uint16 AllocateAssemblyRequestId() { return ++NextAssemblyRequestId; }
+	const FWeaponStatBlock& GetDerivedStats() const { return DerivedStats; }
+	const TArray<FInstalledWeaponPart>& GetInstalledParts() const { return InstalledParts; }
+
 protected:
 
 	UFUNCTION()
 	void OnRep_CurrentAmmo(int32 PreviousAmmo);
+	UFUNCTION()
+	void OnRep_InstalledParts();
+	UFUNCTION()
+	void OnRep_DerivedStats();
 
 	/** Server-only validation. Fills OutReason on failure. */
 	bool ValidateFireRequest(const FFireStartInfo& StartInfo, EFireRejectReason& OutReason, FVector& OutExpectedOrigin) const;
@@ -92,6 +120,10 @@ protected:
 
 	/** Server-only: spawn weapon if not yet spawned. */
 	void EnsureWeaponSpawned();
+	void RebuildDerivedStats();
+	UInventoryComponent* GetOwnerInventory() const;
+	bool IsAssemblyRequestStale(uint16 RequestId) const;
+	void MarkAssemblyRequestConsumed(uint16 RequestId);
 
 	/** Current weapon. Replicated so the owning client can build aim from the same muzzle. */
 	UPROPERTY(Replicated)
@@ -99,4 +131,7 @@ protected:
 
 	/** Server-side timestamp of the most recent accepted fire, for rate limiting. */
 	float LastAcceptedFireTime = 0.f;
+	uint16 NextAssemblyRequestId = 0;
+	uint16 LastConsumedAssemblyRequestId = 0;
+	bool bHasConsumedAssemblyRequest = false;
 };

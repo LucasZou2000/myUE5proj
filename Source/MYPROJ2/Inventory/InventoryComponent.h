@@ -126,6 +126,12 @@ public:
 	 */
 	bool AuthorityTryRemove(const FGuid& InstanceId, int32 Quantity);
 
+	/** Removes one complete instance while preserving its stable identity. */
+	bool AuthorityTakeSingleInstance(const FGuid& InstanceId, FItemInstance& OutItem);
+
+	/** Adds one complete instance at an explicit or deterministic first-fit position. */
+	bool AuthorityTryAddInstance(const FItemInstance& Item, EInventoryRejectReason& OutReason);
+
 	/**
 	 * Atomically transfers a full quantity to another authoritative inventory.
 	 * The destination is validated from a staged copy before either Fast Array

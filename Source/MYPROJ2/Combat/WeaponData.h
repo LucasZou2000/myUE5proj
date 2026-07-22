@@ -1,7 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "Items/ItemDefinition.h"
+#include "Weapons/WeaponBuildTypes.h"
 #include "WeaponData.generated.h"
 
 /**
@@ -12,19 +13,26 @@
  *   - WeaponClass is the AMYPROJ2Weapon subclass to spawn on the Character.
  */
 UCLASS(BlueprintType)
-class MYPROJ2_API UWeaponData : public UPrimaryDataAsset
+class MYPROJ2_API UWeaponData : public UItemDefinition
 {
 	GENERATED_BODY()
 
 public:
-
-	/** Human-readable name for HUD/debug. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
-	FText DisplayName;
+	UWeaponData();
 
 	/** Weapon actor class spawned on the owning Character at BeginPlay. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TSubclassOf<class AMYPROJ2Weapon> WeaponClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
+	FWeaponStatBlock BaseStats;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
+	FGameplayTagContainer CompatibilityTags;
+
+	/** Keeps an existing M2 asset behavior-identical until its BaseStats are explicitly migrated. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Migration")
+	bool bUseLegacyM2Stats = true;
 
 	/** Shots per minute. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (ClampMin = "1.0"))
@@ -41,4 +49,11 @@ public:
 	/** Total ammo for M2 (no reload). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (ClampMin = "0"))
 	int32 Ammo = 30;
+
+	virtual FPrimaryAssetId GetPrimaryAssetId() const override
+	{
+		return FPrimaryAssetId(TEXT("Weapon"), ItemId);
+	}
+
+	FWeaponStatBlock GetEffectiveBaseStats() const;
 };

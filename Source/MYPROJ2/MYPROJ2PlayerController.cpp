@@ -6,6 +6,10 @@
 #include "Engine/LocalPlayer.h"
 #include "Character/MYPROJ2CharacterBase.h"
 #include "Combat/HealthComponent.h"
+#include "Combat/CombatComponent.h"
+#include "Weapons/WeaponPartDefinition.h"
+#include "Weapons/WeaponBuildTypes.h"
+#include "Items/ItemDefinition.h"
 #include "Base/BaseStashWidget.h"
 #include "Framework/MYPROJ2PlayerState.h"
 #include "Inventory/InventoryComponent.h"
@@ -289,6 +293,95 @@ void AMYPROJ2PlayerController::DebugGrantStashCurrency(int64 Amount)
 		if (UProfileSubsystem* ProfileSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UProfileSubsystem>() : nullptr)
 		{
 			ProfileSubsystem->DebugGrantStashCurrency(Amount);
+		}
+	}
+}
+
+void AMYPROJ2PlayerController::DebugInstallWeaponPart(int32 Slot)
+{
+	if (!IsLocalPlayerController() || Slot < 0 || Slot > static_cast<int32>(EWeaponPartSlot::Optic))
+	{
+		return;
+	}
+	AMYPROJ2CharacterBase* RaidCharacter = Cast<AMYPROJ2CharacterBase>(GetPawn());
+	UCombatComponent* Combat = RaidCharacter ? RaidCharacter->FindComponentByClass<UCombatComponent>() : nullptr;
+	UInventoryComponent* Inventory = GetInventoryComponent();
+	if (!Combat || !Inventory)
+	{
+		return;
+	}
+	const EWeaponPartSlot RequestedSlot = static_cast<EWeaponPartSlot>(Slot);
+	for (const FReplicatedInventoryEntry& Entry : Inventory->GetEntries())
+	{
+		if (const UWeaponPartDefinition* Part = Cast<UWeaponPartDefinition>(Inventory->ResolveDefinition(Entry.Item.DefinitionId));
+			Part && Part->Slot == RequestedSlot && Entry.Item.Quantity == 1)
+		{
+			Combat->ServerInstallPart(Entry.Item.InstanceId, RequestedSlot, Combat->AllocateAssemblyRequestId());
+			return;
+		}
+	}
+	UE_LOG(LogMYPROJ2Combat, Warning, TEXT("DebugInstallWeaponPart: no matching part in inventory for slot %d"), Slot);
+}
+
+void AMYPROJ2PlayerController::DebugRemoveWeaponPart(int32 Slot)
+{
+	if (!IsLocalPlayerController() || Slot < 0 || Slot > static_cast<int32>(EWeaponPartSlot::Optic))
+	{
+		return;
+	}
+	if (AMYPROJ2CharacterBase* RaidCharacter = Cast<AMYPROJ2CharacterBase>(GetPawn()))
+	{
+		if (UCombatComponent* Combat = RaidCharacter->FindComponentByClass<UCombatComponent>())
+		{
+			Combat->ServerRemovePart(static_cast<EWeaponPartSlot>(Slot), Combat->AllocateAssemblyRequestId());
+		}
+	}
+}
+
+void AMYPROJ2PlayerController::DebugWeaponStats()
+{
+	if (AMYPROJ2CharacterBase* RaidCharacter = Cast<AMYPROJ2CharacterBase>(GetPawn()))
+	{
+		if (const UCombatComponent* Combat = RaidCharacter->FindComponentByClass<UCombatComponent>())
+		{
+			const FWeaponStatBlock& Stats = Combat->GetDerivedStats();
+			UE_LOG(LogMYPROJ2Combat, Log, TEXT("M6 weapon stats: damage=%.2f interval=%.3f range=%.0f spread=%.2f noise=%.0f mag=%d parts=%d"),
+				Stats.Damage, Stats.FireIntervalSeconds, Stats.RangeCm, Stats.SpreadDegrees,
+				Stats.NoiseRadiusCm, Stats.MagazineSize, Combat->GetInstalledParts().Num());
+		}
+	}
+}
+
+void AMYPROJ2PlayerController::DebugGrantWeaponTestParts()
+{
+	if (IsLocalPlayerController())
+	{
+		ServerDebugGrantWeaponTestParts();
+	}
+}
+
+void AMYPROJ2PlayerController::ServerDebugGrantWeaponTestParts_Implementation()
+{
+	if (!HasAuthority() || !InventoryComponent)
+	{
+		return;
+	}
+	static const TCHAR* TestPartPaths[] =
+	{
+		TEXT("/Game/Raid/Data/Items/DA_Part_TestBarrel.DA_Part_TestBarrel"),
+		TEXT("/Game/Raid/Data/Items/DA_Part_TestStock.DA_Part_TestStock")
+	};
+	for (const TCHAR* Path : TestPartPaths)
+	{
+		if (UItemDefinition* Definition = LoadObject<UItemDefinition>(nullptr, Path))
+		{
+			const bool bAdded = InventoryComponent->AuthorityTryAdd(Definition, 1);
+			UE_LOG(LogMYPROJ2Combat, Log, TEXT("DebugGrantWeaponTestParts: %s -> %s"),
+				*Definition->GetPrimaryAssetId().ToString(), bAdded ? TEXT("added") : TEXT("inventory full/failed"));
+		}
+		else
+		{
+			UE_LOG(LogMYPROJ2Combat, Error, TEXT("DebugGrantWeaponTestParts: failed to load %s"), Path);
 		}
 	}
 }

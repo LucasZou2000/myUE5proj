@@ -280,11 +280,11 @@ Validated by Lucas (2026-07-22):
 
 Next:
 
-- Run the bounded two-player manual M4 acceptance pass; do not start M5 until it passes.
+- M4 的双人抢取、距离/LOS 拒绝与迟加入仍可作为后续网络回归验收；不阻塞已开始的 M5 本地基地切片。
 
 ## 2026-07-22 - Agent - M5 / local stash, currency, and settlement bridge
 
-Status: PARTIAL (implementation and Live Coding compile complete; Standalone PIE persistence/settlement acceptance pending).
+Status: ACCEPTED for the current Standalone local-base slice. Multiplayer base/deploy and a formal extraction-point Actor remain M8 work.
 
 Changed:
 
@@ -308,7 +308,12 @@ Validation:
 - UE MCP Live Coding: `Result: Succeeded` after all M5 C++ files, UHT-generated types, rollback logic, and debug commands were added.
 - Base UI lifecycle fix: native `UBaseStashWidget` now creates its WidgetTree in `RebuildWidget`, before Slate creates the root. The prior `NativeConstruct`-only construction produced an empty Slate widget even though `OpenBaseStash` executed. Cold build after this fix: `Result: Succeeded`.
 
-Manual Standalone PIE acceptance:
+Validated by Lucas (2026-07-22):
+
+- `OpenBaseStash` 正确显示原生基地面板，`TAKE ALL` / `STORE ALL` 可用于当前简易整备流程。
+- Standalone 的仓库、携带资金、撤离结算和本地存档流程已手工测试，当前没有发现问题。
+
+Manual Standalone PIE regression checklist:
 
 1. In the PIE console, run `DebugGrantStashCurrency 100`, then `OpenBaseStash`.
 2. Click `TAKE ALL`; verify the UI and `LogMYPROJ2Profile` show currency moved from warehouse to loadout.
@@ -316,3 +321,42 @@ Manual Standalone PIE acceptance:
 4. Run `DebugExtract`; verify carried currency returns to warehouse, carried items are logged as settled, and the base UI opens again.
 5. Repeat with a carried item/currency, then run `DebugKillRaid`; verify the player inventory/currency are cleared and no reward is written to warehouse.
 6. Restart the editor and open the base UI again; verify warehouse stacks and currency survived. Save files are `Saved/SaveGames/MYPROJ2_Profile_0.sav` and backup.
+
+## 2026-07-23 - Agent - M6 / runtime weapon assembly core
+
+Status: PARTIAL (runtime core, test assets, and automation pass; manual PIE install/remove acceptance remains).
+
+Changed:
+
+- `Source/MYPROJ2/Weapons/WeaponBuildTypes.h`: slot enum, assembly rejection reasons, base/delta/scale/modifier stat blocks, and deterministic installed-part state.
+- `Source/MYPROJ2/Weapons/WeaponPartDefinition.h/.cpp`: `UWeaponPartDefinition` item subclass with slot, compatibility query, and numerical modifier.
+- `Source/MYPROJ2/Weapons/WeaponStatLibrary.h/.cpp`: pure additive-then-multiplicative-then-clamp aggregation with stable slot ordering.
+- `Source/MYPROJ2/Weapons/WeaponStatLibraryTests.cpp`: empty-build, aggregation, no-drift, and order-independence automation coverage.
+- `Source/MYPROJ2/Combat/WeaponData.h/.cpp`: weapon now derives from `UItemDefinition`, exposes base stats/compatibility tags, preserves `Weapon:TestRifle`, and keeps an explicit legacy M2 conversion path until the existing asset is migrated.
+- `Source/MYPROJ2/Combat/CombatComponent.h/.cpp`: owner-only installed build/derived stat replication, authoritative install/remove RPCs, server-derived fire cadence/damage/range/spread/ammo capacity/noise, and AI Hearing report after accepted shots.
+- `Source/MYPROJ2/Inventory/InventoryComponent.h/.cpp`: stable-ID single-instance take/add helpers for assembly transactions.
+- `Source/MYPROJ2/MYPROJ2PlayerController.h/.cpp`: no-UI PIE commands `DebugInstallWeaponPart <0-3>`, `DebugRemoveWeaponPart <0-3>`, and `DebugWeaponStats`.
+- `Config/DefaultGame.ini`: AssetManager scan for `Weapon` primary assets under `/Game/Raid/Blueprints`.
+- `Source/MYPROJ2/Loot/LootContainerWidget.cpp`: narrow unrelated Unity-build helper rename so the project baseline compiles.
+
+Contracts:
+
+- Client submits item instance ID and slot only; Server resolves the part definition and computes all stats.
+- Install removes the quantity-one inventory instance and preserves its `FGuid`; remove restores the same instance ID only after inventory space validation.
+- `DerivedStats` is the only gameplay source for accepted fire; client copies are presentation-only.
+- M6 deliberately has no Workbench UI, visual socket changes, raid loadout transfer, or part persistence.
+
+Validation:
+
+- `build.ps1`: `Result: Succeeded` on UE 5.8.
+- Automation report `Saved/Automation_M6/index.json`: `MYPROJ2.M6.WeaponStats.Aggregation`, Success, 1 passed / 0 failed.
+
+Remaining:
+
+- `DA_Part_TestBarrel` and `DA_Part_TestStock` were created through the running editor MCP, saved, and read back with the expected slot/modifier values.
+- `DA_Weapon_TestRifle` was migrated through MCP to explicit `BaseStats` and `bUseLegacyM2Stats=false`, then saved.
+- Full M2/M3/M4/M5 PIE regression and two-player assembly race validation remain.
+
+Next:
+
+- In Standalone PIE, run `DebugGrantWeaponTestParts`, `DebugWeaponStats`, `DebugInstallWeaponPart 0`, `DebugWeaponStats`, `DebugInstallWeaponPart 1`, `DebugWeaponStats`, `DebugRemoveWeaponPart 0`, and `DebugWeaponStats`; verify inventory identity/attributes from the log. Then repeat the relevant checks in Listen Server + client PIE if needed.

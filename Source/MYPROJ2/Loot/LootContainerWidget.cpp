@@ -23,7 +23,7 @@ namespace
 {
 	constexpr float CellSize = 42.0f;
 
-	UTextBlock* MakeText(UWidgetTree* Tree, const FText& Text, int32 Size, const FLinearColor& Color)
+	UTextBlock* MakeLootText(UWidgetTree* Tree, const FText& Text, int32 Size, const FLinearColor& Color)
 	{
 		UTextBlock* Label = Tree->ConstructWidget<UTextBlock>();
 		Label->SetText(Text);
@@ -125,12 +125,12 @@ void ULootContainerWidget::BuildWidgetTree()
 	Window->SetContent(Layout);
 	UHorizontalBox* Header = WidgetTree->ConstructWidget<UHorizontalBox>();
 	Layout->AddChildToVerticalBox(Header);
-	UTextBlock* Title = MakeText(WidgetTree, FText::FromString(TEXT("LOOT CONTAINER")), 20, FLinearColor(0.92f, 0.94f, 0.90f));
+	UTextBlock* Title = MakeLootText(WidgetTree, FText::FromString(TEXT("LOOT CONTAINER")), 20, FLinearColor(0.92f, 0.94f, 0.90f));
 	UHorizontalBoxSlot* TitleSlot = Header->AddChildToHorizontalBox(Title);
 	TitleSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	UButton* CloseButton = WidgetTree->ConstructWidget<UButton>();
 	CloseButton->OnClicked.AddDynamic(this, &ULootContainerWidget::HandleCloseClicked);
-	CloseButton->SetContent(MakeText(WidgetTree, FText::FromString(TEXT("X")), 16, FLinearColor::White));
+	CloseButton->SetContent(MakeLootText(WidgetTree, FText::FromString(TEXT("X")), 16, FLinearColor::White));
 	Header->AddChildToHorizontalBox(CloseButton);
 
 	USpacer* HeaderGap = WidgetTree->ConstructWidget<USpacer>();
@@ -143,7 +143,7 @@ void ULootContainerWidget::BuildWidgetTree()
 	{
 		UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>();
 		Grids->AddChildToHorizontalBox(Column);
-		Column->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(Name), 14, FLinearColor(0.65f, 0.72f, 0.68f)));
+		Column->AddChildToVerticalBox(MakeLootText(WidgetTree, FText::FromString(Name), 14, FLinearColor(0.65f, 0.72f, 0.68f)));
 		USpacer* Gap = WidgetTree->ConstructWidget<USpacer>();
 		Gap->SetSize(FVector2D(1.0f, 8.0f));
 		Column->AddChildToVerticalBox(Gap);
@@ -196,7 +196,7 @@ void ULootContainerWidget::BuildInventoryGrid(UGridPanel* Grid, UInventoryCompon
 		Style.Hovered.TintColor = FSlateColor(FLinearColor(0.34f, 0.48f, 0.40f, 1.0f));
 		Button->SetStyle(Style);
 		const FString Name = Definition->DisplayName.IsEmpty() ? Definition->ItemId.ToString() : Definition->DisplayName.ToString();
-		Button->SetContent(MakeText(WidgetTree, FText::FromString(FString::Printf(TEXT("%s\nx%d"), *Name, Entry.Item.Quantity)), 11, FLinearColor::White));
+		Button->SetContent(MakeLootText(WidgetTree, FText::FromString(FString::Printf(TEXT("%s\nx%d"), *Name, Entry.Item.Quantity)), 11, FLinearColor::White));
 		UGridSlot* ItemGridSlot = Grid->AddChildToGrid(Button, Entry.Item.GridPosition.Y, Entry.Item.GridPosition.X);
 		ItemGridSlot->SetColumnSpan(Footprint.X);
 		ItemGridSlot->SetRowSpan(Footprint.Y);

@@ -390,6 +390,63 @@ bool UInventoryComponent::AuthorityTryRemove(const FGuid& InstanceId, int32 Quan
 	return true;
 }
 
+bool UInventoryComponent::AuthorityTakeSingleInstance(const FGuid& InstanceId, FItemInstance& OutItem)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		return false;
+	}
+	FReplicatedInventoryEntry* Entry = FindEntryMutable(InstanceId);
+	if (!Entry || Entry->Item.Quantity != 1)
+	{
+		return false;
+	}
+	OutItem = Entry->Item;
+	RemoveEntry(InstanceId);
+	return true;
+}
+
+bool UInventoryComponent::AuthorityTryAddInstance(const FItemInstance& Item, EInventoryRejectReason& OutReason)
+{
+	OutReason = EInventoryRejectReason::InvalidRequest;
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority() || !Item.IsValid() || FindEntry(Item.InstanceId))
+	{
+		return false;
+	}
+	UItemDefinition* Definition = ResolveDefinition(Item.DefinitionId);
+	if (!Definition || Item.Quantity <= 0 || Item.Quantity > FMath::Max(1, Definition->MaxStack))
+	{
+		OutReason = EInventoryRejectReason::InvalidDefinition;
+		return false;
+	}
+
+	const FIntPoint Footprint = Definition->GetEffectiveGridSize(Item.bRotated);
+	TFunction<const FItemInstance&(const FReplicatedInventoryEntry&)> GetItem =
+		[](const FReplicatedInventoryEntry& Entry) -> const FItemInstance& { return Entry.Item; };
+	TFunction<FIntPoint(const FItemInstance&)> GetFootprint = [this](const FItemInstance& Entry)
+	{
+		return GetEntryFootprint(Entry);
+	};
+	FIntPoint Position = Item.GridPosition;
+	if (!FInventoryGridLibrary::IsInBounds(GetGridSize(), Position, Footprint) ||
+		FInventoryGridLibrary::WouldOverlap(ReplicatedItems.Entries, GetItem, GetFootprint, Position, Footprint, FGuid()))
+	{
+		if (!FInventoryGridLibrary::FindFirstFit(GetGridSize(), ReplicatedItems.Entries, GetItem, GetFootprint, Footprint, Position))
+		{
+			OutReason = EInventoryRejectReason::NoSpace;
+			return false;
+		}
+	}
+
+	FItemInstance Committed = Item;
+	Committed.GridPosition = Position;
+	CommitNewEntry(MoveTemp(Committed));
+	OutReason = EInventoryRejectReason::None;
+	return true;
+}
+
 bool UInventoryComponent::AuthorityTransferTo(UInventoryComponent* Destination, const FGuid& InstanceId,
 	int32 Quantity, const TOptional<FIntPoint>& TargetPosition, bool bRotated, EInventoryRejectReason& OutReason)
 {
