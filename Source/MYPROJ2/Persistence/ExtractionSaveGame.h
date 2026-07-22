@@ -25,13 +25,12 @@ public:
 	UPROPERTY(SaveGame)
 	FSavedInventory Stash;
 
-	/** Base-side carried loadout. It is removed from Stash before entering a raid. */
+	/** Current carried inventory persisted before level travel and restored after travel. */
 	UPROPERTY(SaveGame)
-	FPreparedRaidLoadout PreparedLoadout;
+	FSavedInventory CurrentInventory;
 
-	/** Crash-safe handoff between pressing Enter Raid and the next map's PlayerController. */
 	UPROPERTY(SaveGame)
-	FPreparedRaidLoadout PendingRaidLoadout;
+	int64 CurrentCurrency = 0;
 
 	UPROPERTY(SaveGame)
 	int64 StashCurrency = 0;

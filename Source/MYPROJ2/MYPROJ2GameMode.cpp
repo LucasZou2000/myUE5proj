@@ -53,21 +53,11 @@ void AMYPROJ2GameMode::PostLogin(APlayerController* NewPlayer)
 		{
 			if (UProfileSubsystem* Profile = GetGameInstance()->GetSubsystem<UProfileSubsystem>())
 			{
-				FPreparedRaidLoadout Loadout;
-				if (Profile->ConsumePendingRaidLoadout(Loadout))
+				int64 CurrentCurrency = 0;
+				if (Profile->LoadCurrentInventory(RaidController->GetInventoryComponent(), CurrentCurrency))
 				{
-					EInventoryRejectReason Reason = EInventoryRejectReason::None;
-					if (RaidController->GetInventoryComponent()->AuthorityReplaceAll(Loadout.Inventory.Items, Reason))
-					{
-						RaidController->AuthoritySetCarriedCurrency(Loadout.Currency);
-						UE_LOG(LogMYPROJ2Net, Log, TEXT("Applied local prepared raid loadout: %d stacks, currency=%lld."),
-							Loadout.Inventory.Items.Num(), Loadout.Currency);
-					}
-					else
-					{
-						UE_LOG(LogMYPROJ2Net, Error, TEXT("Prepared raid loadout rejected by runtime inventory: reason=%d."),
-							static_cast<int32>(Reason));
-					}
+					RaidController->AuthoritySetCarriedCurrency(CurrentCurrency);
+					UE_LOG(LogMYPROJ2Net, Log, TEXT("Loaded local current carry from profile: currency=%lld."), CurrentCurrency);
 				}
 			}
 		}

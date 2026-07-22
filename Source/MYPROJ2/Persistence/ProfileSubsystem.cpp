@@ -2,6 +2,7 @@
 
 #include "Engine/AssetManager.h"
 #include "Inventory/InventoryGridLibrary.h"
+#include "Inventory/InventoryComponent.h"
 #include "Items/ItemDefinition.h"
 #include "Kismet/GameplayStatics.h"
 #include "Persistence/ExtractionSaveGame.h"
@@ -70,13 +71,12 @@ EProfileLoadResult UProfileSubsystem::LoadOrCreateProfile()
 	}
 	if (Loaded->SaveVersion < CurrentSaveVersion)
 	{
-		// Version 2 adds explicit prepared/pending raid state. Existing stash data remains untouched.
+		// Version 2 adds persisted current carried state. Existing stash data remains untouched.
 		Loaded->SaveVersion = CurrentSaveVersion;
 	}
 	EnsureDefaultLayout(*Loaded);
 	ValidateAndRepairInventory(Loaded->Stash, TEXT("Stash"));
-	ValidateAndRepairInventory(Loaded->PreparedLoadout.Inventory, TEXT("PreparedLoadout"));
-	ValidateAndRepairInventory(Loaded->PendingRaidLoadout.Inventory, TEXT("PendingRaidLoadout"));
+	ValidateAndRepairInventory(Loaded->CurrentInventory, TEXT("CurrentInventory"));
 	Profile = Loaded;
 
 	if (Result == EProfileLoadResult::CreatedNew)
@@ -119,13 +119,9 @@ bool UProfileSubsystem::SaveProfile()
 void UProfileSubsystem::EnsureDefaultLayout(UExtractionSaveGame& Save) const
 {
 	Save.Stash.GridSize = FIntPoint(StashColumns, StashRows);
-	if (Save.PreparedLoadout.Inventory.GridSize.X <= 0 || Save.PreparedLoadout.Inventory.GridSize.Y <= 0)
+	if (Save.CurrentInventory.GridSize.X <= 0 || Save.CurrentInventory.GridSize.Y <= 0)
 	{
-		Save.PreparedLoadout.Inventory.GridSize = FIntPoint(LoadoutColumns, LoadoutRows);
-	}
-	if (Save.PendingRaidLoadout.Inventory.GridSize.X <= 0 || Save.PendingRaidLoadout.Inventory.GridSize.Y <= 0)
-	{
-		Save.PendingRaidLoadout.Inventory.GridSize = FIntPoint(LoadoutColumns, LoadoutRows);
+		Save.CurrentInventory.GridSize = FIntPoint(CurrentColumns, CurrentRows);
 	}
 }
 
@@ -285,147 +281,146 @@ bool UProfileSubsystem::MoveAll(FSavedInventory& Source, FSavedInventory& Destin
 	return true;
 }
 
-bool UProfileSubsystem::MoveAllStashToLoadout()
+bool UProfileSubsystem::SnapshotInventory(const UInventoryComponent* Inventory, FSavedInventory& OutInventory) const
 {
-	if (!Profile)
+	if (!Inventory)
 	{
 		return false;
 	}
-	const FSavedInventory PreviousStash = Profile->Stash;
-	const FPreparedRaidLoadout PreviousLoadout = Profile->PreparedLoadout;
-	const int64 PreviousCurrency = Profile->StashCurrency;
-	if (!MoveAll(Profile->Stash, Profile->PreparedLoadout.Inventory))
+	OutInventory.GridSize = Inventory->GetGridSize();
+	OutInventory.Items.Reset();
+	for (const FReplicatedInventoryEntry& Entry : Inventory->GetEntries())
 	{
-		UE_LOG(LogMYPROJ2Profile, Warning, TEXT("Withdraw all failed: loadout has insufficient space."));
+		OutInventory.Items.Add(Entry.Item);
+	}
+	return true;
+}
+
+bool UProfileSubsystem::MoveAllStashToInventory(UInventoryComponent* Inventory, int64& InOutCarriedCurrency)
+{
+	if (!Profile || !Inventory || !Inventory->GetOwner() || !Inventory->GetOwner()->HasAuthority())
+	{
 		return false;
 	}
-	const int64 Currency = Profile->StashCurrency;
-	if (Currency > MAX_int64 - Profile->PreparedLoadout.Currency)
+	FSavedInventory PreviousStash = Profile->Stash;
+	FSavedInventory PreviousInventory;
+	if (!SnapshotInventory(Inventory, PreviousInventory))
 	{
-		Profile->Stash = PreviousStash;
-		Profile->PreparedLoadout = PreviousLoadout;
 		return false;
 	}
+	FSavedInventory StagedStash = Profile->Stash;
+	FSavedInventory StagedInventory = PreviousInventory;
+	if (!MoveAll(StagedStash, StagedInventory))
+	{
+		UE_LOG(LogMYPROJ2Profile, Warning, TEXT("Take all failed: current inventory has insufficient space."));
+		return false;
+	}
+	EInventoryRejectReason Reason = EInventoryRejectReason::None;
+	if (!Inventory->AuthorityReplaceAll(StagedInventory.Items, Reason))
+	{
+		return false;
+	}
+	const int64 PreviousStashCurrency = Profile->StashCurrency;
+	const int64 PreviousCarriedCurrency = InOutCarriedCurrency;
+	if (PreviousStashCurrency > MAX_int64 - InOutCarriedCurrency)
+	{
+		Inventory->AuthorityReplaceAll(PreviousInventory.Items, Reason);
+		return false;
+	}
+	Profile->Stash = MoveTemp(StagedStash);
+	InOutCarriedCurrency += Profile->StashCurrency;
 	Profile->StashCurrency = 0;
-	Profile->PreparedLoadout.Currency += Currency;
-	const bool bSaved = SaveProfile();
-	if (!bSaved)
+	if (!SaveProfile())
 	{
-		Profile->Stash = PreviousStash;
-		Profile->PreparedLoadout = PreviousLoadout;
-		Profile->StashCurrency = PreviousCurrency;
+		Profile->Stash = MoveTemp(PreviousStash);
+		Profile->StashCurrency = PreviousStashCurrency;
+		InOutCarriedCurrency = PreviousCarriedCurrency;
+		Inventory->AuthorityReplaceAll(PreviousInventory.Items, Reason);
+		return false;
 	}
-	UE_LOG(LogMYPROJ2Profile, Log, TEXT("Withdraw all: %s"), bSaved ? TEXT("saved") : TEXT("save failed"));
-	return bSaved;
+	UE_LOG(LogMYPROJ2Profile, Log, TEXT("Take all: stash -> current inventory, currency=%lld."), InOutCarriedCurrency - PreviousCarriedCurrency);
+	return true;
 }
 
-bool UProfileSubsystem::MoveAllLoadoutToStash()
+bool UProfileSubsystem::MoveAllInventoryToStash(UInventoryComponent* Inventory, int64& InOutCarriedCurrency)
 {
-	if (!Profile)
+	if (!Profile || !Inventory || !Inventory->GetOwner() || !Inventory->GetOwner()->HasAuthority())
 	{
 		return false;
 	}
-	const FSavedInventory PreviousStash = Profile->Stash;
-	const FPreparedRaidLoadout PreviousLoadout = Profile->PreparedLoadout;
-	const int64 PreviousCurrency = Profile->StashCurrency;
-	if (!MoveAll(Profile->PreparedLoadout.Inventory, Profile->Stash))
+	FSavedInventory PreviousStash = Profile->Stash;
+	FSavedInventory PreviousInventory;
+	if (!SnapshotInventory(Inventory, PreviousInventory))
 	{
-		UE_LOG(LogMYPROJ2Profile, Warning, TEXT("Deposit all failed: stash has insufficient space."));
 		return false;
 	}
-	if (Profile->PreparedLoadout.Currency > MAX_int64 - Profile->StashCurrency)
+	FSavedInventory StagedStash = Profile->Stash;
+	FSavedInventory StagedInventory = PreviousInventory;
+	if (!MoveAll(StagedInventory, StagedStash))
 	{
-		Profile->Stash = PreviousStash;
-		Profile->PreparedLoadout = PreviousLoadout;
-		return false;
-	}
-	Profile->StashCurrency += Profile->PreparedLoadout.Currency;
-	Profile->PreparedLoadout.Currency = 0;
-	const bool bSaved = SaveProfile();
-	if (!bSaved)
-	{
-		Profile->Stash = PreviousStash;
-		Profile->PreparedLoadout = PreviousLoadout;
-		Profile->StashCurrency = PreviousCurrency;
-	}
-	UE_LOG(LogMYPROJ2Profile, Log, TEXT("Deposit all: %s"), bSaved ? TEXT("saved") : TEXT("save failed"));
-	return bSaved;
-}
-
-bool UProfileSubsystem::MoveCurrencyToLoadout(int64 Amount)
-{
-	if (!Profile || Amount <= 0 || Amount > Profile->StashCurrency || Amount > MAX_int64 - Profile->PreparedLoadout.Currency)
-	{
+		UE_LOG(LogMYPROJ2Profile, Warning, TEXT("Store all failed: stash has insufficient space."));
 		return false;
 	}
 	const int64 PreviousStashCurrency = Profile->StashCurrency;
-	const int64 PreviousLoadoutCurrency = Profile->PreparedLoadout.Currency;
-	Profile->StashCurrency -= Amount;
-	Profile->PreparedLoadout.Currency += Amount;
+	const int64 PreviousCarriedCurrency = InOutCarriedCurrency;
+	if (InOutCarriedCurrency < 0 || InOutCarriedCurrency > MAX_int64 - Profile->StashCurrency)
+	{
+		return false;
+	}
+	Profile->Stash = MoveTemp(StagedStash);
+	Profile->StashCurrency += InOutCarriedCurrency;
+	InOutCarriedCurrency = 0;
+	Inventory->AuthorityClearAll();
 	if (!SaveProfile())
 	{
+		Profile->Stash = MoveTemp(PreviousStash);
 		Profile->StashCurrency = PreviousStashCurrency;
-		Profile->PreparedLoadout.Currency = PreviousLoadoutCurrency;
+		InOutCarriedCurrency = PreviousCarriedCurrency;
+		EInventoryRejectReason Reason = EInventoryRejectReason::None;
+		Inventory->AuthorityReplaceAll(PreviousInventory.Items, Reason);
+		return false;
+	}
+	UE_LOG(LogMYPROJ2Profile, Log, TEXT("Store all: current inventory -> stash."));
+	return true;
+}
+
+bool UProfileSubsystem::SaveCurrentInventory(UInventoryComponent* Inventory, int64 CarriedCurrency)
+{
+	if (!Profile || !Inventory || CarriedCurrency < 0 || !Inventory->GetOwner() || !Inventory->GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+	FSavedInventory CurrentInventory;
+	if (!SnapshotInventory(Inventory, CurrentInventory))
+	{
+		return false;
+	}
+	const FSavedInventory PreviousInventory = Profile->CurrentInventory;
+	const int64 PreviousCurrency = Profile->CurrentCurrency;
+	Profile->CurrentInventory = MoveTemp(CurrentInventory);
+	Profile->CurrentInventory.GridSize = FIntPoint(CurrentColumns, CurrentRows);
+	Profile->CurrentCurrency = CarriedCurrency;
+	if (!SaveProfile())
+	{
+		Profile->CurrentInventory = PreviousInventory;
+		Profile->CurrentCurrency = PreviousCurrency;
 		return false;
 	}
 	return true;
 }
 
-bool UProfileSubsystem::MoveCurrencyToStash(int64 Amount)
+bool UProfileSubsystem::LoadCurrentInventory(UInventoryComponent* Inventory, int64& OutCarriedCurrency)
 {
-	if (!Profile || Amount <= 0 || Amount > Profile->PreparedLoadout.Currency || Amount > MAX_int64 - Profile->StashCurrency)
+	if (!Profile || !Inventory || !Inventory->GetOwner() || !Inventory->GetOwner()->HasAuthority())
 	{
 		return false;
 	}
-	const int64 PreviousStashCurrency = Profile->StashCurrency;
-	const int64 PreviousLoadoutCurrency = Profile->PreparedLoadout.Currency;
-	Profile->PreparedLoadout.Currency -= Amount;
-	Profile->StashCurrency += Amount;
-	if (!SaveProfile())
-	{
-		Profile->StashCurrency = PreviousStashCurrency;
-		Profile->PreparedLoadout.Currency = PreviousLoadoutCurrency;
-		return false;
-	}
-	return true;
-}
-
-bool UProfileSubsystem::BeginRaidFromPreparation()
-{
-	if (!Profile || !Profile->PendingRaidLoadout.Inventory.Items.IsEmpty() || Profile->PendingRaidLoadout.Currency != 0)
+	EInventoryRejectReason Reason = EInventoryRejectReason::None;
+	if (!Inventory->AuthorityReplaceAll(Profile->CurrentInventory.Items, Reason))
 	{
 		return false;
 	}
-	const FPreparedRaidLoadout PreviousPrepared = Profile->PreparedLoadout;
-	const FPreparedRaidLoadout PreviousPending = Profile->PendingRaidLoadout;
-	Profile->PendingRaidLoadout = Profile->PreparedLoadout;
-	Profile->PendingRaidLoadout.Inventory.GridSize = FIntPoint(LoadoutColumns, LoadoutRows);
-	Profile->PreparedLoadout = FPreparedRaidLoadout();
-	Profile->PreparedLoadout.Inventory.GridSize = FIntPoint(LoadoutColumns, LoadoutRows);
-	if (!SaveProfile())
-	{
-		Profile->PreparedLoadout = PreviousPrepared;
-		Profile->PendingRaidLoadout = PreviousPending;
-		return false;
-	}
-	return true;
-}
-
-bool UProfileSubsystem::ConsumePendingRaidLoadout(FPreparedRaidLoadout& OutLoadout)
-{
-	if (!Profile || (Profile->PendingRaidLoadout.Inventory.Items.IsEmpty() && Profile->PendingRaidLoadout.Currency == 0))
-	{
-		return false;
-	}
-	const FPreparedRaidLoadout Previous = Profile->PendingRaidLoadout;
-	OutLoadout = Previous;
-	Profile->PendingRaidLoadout = FPreparedRaidLoadout();
-	Profile->PendingRaidLoadout.Inventory.GridSize = FIntPoint(LoadoutColumns, LoadoutRows);
-	if (!SaveProfile())
-	{
-		Profile->PendingRaidLoadout = Previous;
-		return false;
-	}
+	OutCarriedCurrency = Profile->CurrentCurrency;
 	return true;
 }
 
@@ -437,8 +432,18 @@ bool UProfileSubsystem::ApplyRaidSettlement(const FRaidSettlementPayload& Settle
 	}
 	if (!Settlement.bExtracted)
 	{
+		const FSavedInventory PreviousCurrentInventory = Profile->CurrentInventory;
+		const int64 PreviousCurrentCurrency = Profile->CurrentCurrency;
+		Profile->CurrentInventory.Items.Reset();
+		Profile->CurrentCurrency = 0;
 		UE_LOG(LogMYPROJ2Profile, Log, TEXT("Raid death settlement: carried items and currency discarded."));
-		return SaveProfile();
+		if (!SaveProfile())
+		{
+			Profile->CurrentInventory = PreviousCurrentInventory;
+			Profile->CurrentCurrency = PreviousCurrentCurrency;
+			return false;
+		}
+		return true;
 	}
 	FSavedInventory StagedStash = Profile->Stash;
 	for (const FItemInstance& Item : Settlement.Items)
@@ -455,13 +460,19 @@ bool UProfileSubsystem::ApplyRaidSettlement(const FRaidSettlementPayload& Settle
 	}
 	const FSavedInventory PreviousStash = Profile->Stash;
 	const int64 PreviousCurrency = Profile->StashCurrency;
+	const FSavedInventory PreviousCurrentInventory = Profile->CurrentInventory;
+	const int64 PreviousCurrentCurrency = Profile->CurrentCurrency;
 	Profile->Stash = MoveTemp(StagedStash);
 	Profile->StashCurrency += Settlement.CarriedCurrency;
+	Profile->CurrentInventory.Items.Reset();
+	Profile->CurrentCurrency = 0;
 	const bool bSaved = SaveProfile();
 	if (!bSaved)
 	{
 		Profile->Stash = PreviousStash;
 		Profile->StashCurrency = PreviousCurrency;
+		Profile->CurrentInventory = PreviousCurrentInventory;
+		Profile->CurrentCurrency = PreviousCurrentCurrency;
 	}
 	UE_LOG(LogMYPROJ2Profile, Log, TEXT("Extraction settlement: %d item stacks, currency=%lld, %s"),
 		Settlement.Items.Num(), Settlement.CarriedCurrency, bSaved ? TEXT("saved") : TEXT("save failed"));
@@ -495,4 +506,10 @@ FString UProfileSubsystem::GetInventorySummary(const FSavedInventory& Inventory)
 		Result += FString::Printf(TEXT("\n%s x%d at (%d,%d)"), *Name, Item.Quantity, Item.GridPosition.X, Item.GridPosition.Y);
 	}
 	return Result;
+}
+
+FString UProfileSubsystem::GetInventorySummary(const UInventoryComponent* Inventory) const
+{
+	FSavedInventory Snapshot;
+	return SnapshotInventory(Inventory, Snapshot) ? GetInventorySummary(Snapshot) : TEXT("Unavailable");
 }

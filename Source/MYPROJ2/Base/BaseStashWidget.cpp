@@ -96,11 +96,11 @@ void UBaseStashWidget::BuildWidgetTree()
 	USpacer* Middle = WidgetTree->ConstructWidget<USpacer>();
 	Middle->SetSize(FVector2D(36.0f, 1.0f));
 	Summaries->AddChildToHorizontalBox(Middle);
-	UVerticalBox* LoadoutColumn = WidgetTree->ConstructWidget<UVerticalBox>();
-	Summaries->AddChildToHorizontalBox(LoadoutColumn)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	LoadoutColumn->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("RAID LOADOUT")), 14, FLinearColor(0.70f, 0.72f, 0.82f)));
+	UVerticalBox* CurrentColumn = WidgetTree->ConstructWidget<UVerticalBox>();
+	Summaries->AddChildToHorizontalBox(CurrentColumn)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	CurrentColumn->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("CURRENT CARRY")), 14, FLinearColor(0.70f, 0.72f, 0.82f)));
 	LoadoutSummaryText = MakeText(WidgetTree, FText::GetEmpty(), 13, FLinearColor::White);
-	LoadoutColumn->AddChildToVerticalBox(LoadoutSummaryText);
+	CurrentColumn->AddChildToVerticalBox(LoadoutSummaryText);
 
 	USpacer* ActionGap = WidgetTree->ConstructWidget<USpacer>();
 	ActionGap->SetSize(FVector2D(1.0f, 18.0f));
@@ -134,32 +134,51 @@ void UBaseStashWidget::Refresh()
 	}
 	StashSummaryText->SetText(FText::FromString(FString::Printf(TEXT("Currency: %lld\n%s"),
 		Profile->StashCurrency, *ProfileSubsystem->GetInventorySummary(Profile->Stash))));
+	const int64 CurrentCurrency = OwningRaidController ? OwningRaidController->GetCarriedCurrency() : 0;
 	LoadoutSummaryText->SetText(FText::FromString(FString::Printf(TEXT("Currency: %lld\n%s"),
-		Profile->PreparedLoadout.Currency, *ProfileSubsystem->GetInventorySummary(Profile->PreparedLoadout.Inventory))));
+		CurrentCurrency, *ProfileSubsystem->GetInventorySummary(OwningRaidController ? OwningRaidController->GetInventoryComponent() : nullptr))));
 }
 
 void UBaseStashWidget::HandleWithdrawAll()
 {
 	UProfileSubsystem* Profile = GetGameInstance() ? GetGameInstance()->GetSubsystem<UProfileSubsystem>() : nullptr;
-	const bool bSuccess = Profile && Profile->MoveAllStashToLoadout();
-	StatusText->SetText(FText::FromString(bSuccess ? TEXT("All warehouse contents moved to loadout.") : TEXT("Could not take all: loadout capacity or save failed.")));
+	if (!Profile || !OwningRaidController)
+	{
+		return;
+	}
+	int64 Currency = OwningRaidController->GetCarriedCurrency();
+	const bool bSuccess = Profile->MoveAllStashToInventory(OwningRaidController->GetInventoryComponent(), Currency);
+	if (bSuccess)
+	{
+		OwningRaidController->AuthoritySetCarriedCurrency(Currency);
+	}
+	StatusText->SetText(FText::FromString(bSuccess ? TEXT("Warehouse contents moved to current carry.") : TEXT("Could not take all: current capacity or save failed.")));
 	Refresh();
 }
 
 void UBaseStashWidget::HandleDepositAll()
 {
 	UProfileSubsystem* Profile = GetGameInstance() ? GetGameInstance()->GetSubsystem<UProfileSubsystem>() : nullptr;
-	const bool bSuccess = Profile && Profile->MoveAllLoadoutToStash();
-	StatusText->SetText(FText::FromString(bSuccess ? TEXT("All loadout contents stored.") : TEXT("Could not store all: stash capacity or save failed.")));
+	if (!Profile || !OwningRaidController)
+	{
+		return;
+	}
+	int64 Currency = OwningRaidController->GetCarriedCurrency();
+	const bool bSuccess = Profile->MoveAllInventoryToStash(OwningRaidController->GetInventoryComponent(), Currency);
+	if (bSuccess)
+	{
+		OwningRaidController->AuthoritySetCarriedCurrency(Currency);
+	}
+	StatusText->SetText(FText::FromString(bSuccess ? TEXT("Current carry stored in warehouse.") : TEXT("Could not store all: stash capacity or save failed.")));
 	Refresh();
 }
 
 void UBaseStashWidget::HandleEnterRaid()
 {
 	UProfileSubsystem* Profile = GetGameInstance() ? GetGameInstance()->GetSubsystem<UProfileSubsystem>() : nullptr;
-	if (!Profile || !Profile->BeginRaidFromPreparation())
+	if (!Profile || !OwningRaidController || !Profile->SaveCurrentInventory(OwningRaidController->GetInventoryComponent(), OwningRaidController->GetCarriedCurrency()))
 	{
-		StatusText->SetText(FText::FromString(TEXT("Could not prepare raid loadout.")));
+		StatusText->SetText(FText::FromString(TEXT("Could not save current carry.")));
 		return;
 	}
 	UGameplayStatics::OpenLevel(this, FName(TEXT("L_Test_Network")));

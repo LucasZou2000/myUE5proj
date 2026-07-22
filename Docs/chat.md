@@ -288,11 +288,11 @@ Status: ACCEPTED for the current Standalone local-base slice. Multiplayer base/d
 
 Changed:
 
-- `Source/MYPROJ2/Persistence/ExtractionSaveGame.h`, `ProfileSaveTypes.h`, `ProfileSubsystem.h/.cpp`: version-2 local Profile with a fixed 5x20 stash, separate stash/loadout currency, prepared loadout, pending raid handoff, primary/backup save slots, migration, load validation, and in-memory rollback when a save fails.
-- `Source/MYPROJ2/Base/BaseStashWidget.h/.cpp`: native debug preparation UI showing warehouse/loadout summaries and `TAKE ALL`, `STORE ALL`, `ENTER RAID` buttons. No grid UI is implemented yet.
+- `Source/MYPROJ2/Persistence/ExtractionSaveGame.h`, `ProfileSaveTypes.h`, `ProfileSubsystem.h/.cpp`: version-2 local Profile with a fixed 5x20 stash, current carried inventory, independent stash/carried currency, primary/backup save slots, migration, load validation, and in-memory rollback when a save fails.
+- `Source/MYPROJ2/Base/BaseStashWidget.h/.cpp`: native debug base UI showing warehouse/current-carry summaries and `TAKE ALL`, `STORE ALL`, `ENTER RAID` buttons. No grid UI is implemented yet.
 - `Source/MYPROJ2/Inventory/InventoryComponent.h/.cpp`: Server-only validated `AuthorityReplaceAll` and `AuthorityClearAll` used only for profile-to-raid handoff and settlement.
 - `Source/MYPROJ2/MYPROJ2PlayerController.h/.cpp`: owner-only carried currency, `OpenBaseStash`, temporary `DebugExtract`, settlement client RPC, and `DebugGrantStashCurrency <amount>` for validating currency before a reward source exists.
-- `Source/MYPROJ2/MYPROJ2GameMode.h/.cpp`, `HealthComponent.cpp`: Server handles extraction/death by clearing the raid inventory/currency, setting life state, and sending a settlement payload. In Standalone only, `PostLogin` consumes the pending prepared loadout into the Server-owned raid inventory.
+- `Source/MYPROJ2/MYPROJ2GameMode.h/.cpp`, `HealthComponent.cpp`: Server handles extraction/death by clearing the raid inventory/currency, setting life state, and sending a settlement payload. In Standalone only, `PostLogin` restores the persisted current carried inventory into the Server-owned raid inventory.
 - `Docs/technical/gameplay-contracts.json`: warehouse contract changed to 5x20 and save version to 2.
 - `Docs/technical/m5-base-persistence.md`: documents this local M5 settlement bridge; M8 remains responsible for real multiplayer extraction/deploy authority.
 
@@ -300,7 +300,7 @@ Contracts:
 
 - SaveGame is local only. UI never calls `SaveGameToSlot` directly and never mutates profile structs itself.
 - The Server remains authoritative for live raid inventory and carried currency. Only its settlement RPC authorizes local profile merge.
-- The base-to-raid handoff is intentionally limited to Standalone. Do not use it for Listen Server clients until M8 has a cross-host payload/trust contract.
+- Current carried state is persisted before level travel and restored after travel. This local flow is intentionally limited to Standalone; do not use it for Listen Server clients until M8 has a cross-host persistence contract.
 - `TAKE ALL` and `STORE ALL` are all-or-nothing. Later UI can call the existing `MoveItem` method for individual stack movement.
 
 Validation:
@@ -316,8 +316,8 @@ Validated by Lucas (2026-07-22):
 Manual Standalone PIE regression checklist:
 
 1. In the PIE console, run `DebugGrantStashCurrency 100`, then `OpenBaseStash`.
-2. Click `TAKE ALL`; verify the UI and `LogMYPROJ2Profile` show currency moved from warehouse to loadout.
-3. Click `ENTER RAID`; this travels to `L_Test_Network` and applies the prepared loadout to the Server-owned player inventory.
+2. Click `TAKE ALL`; verify the UI and `LogMYPROJ2Profile` show currency moved from warehouse to current carry, and that `I` shows the same items.
+3. Click `ENTER RAID`; this saves current carry, travels to `L_Test_Network`, and restores it to the Server-owned player inventory.
 4. Run `DebugExtract`; verify carried currency returns to warehouse, carried items are logged as settled, and the base UI opens again.
 5. Repeat with a carried item/currency, then run `DebugKillRaid`; verify the player inventory/currency are cleared and no reward is written to warehouse.
 6. Restart the editor and open the base UI again; verify warehouse stacks and currency survived. Save files are `Saved/SaveGames/MYPROJ2_Profile_0.sav` and backup.

@@ -17,19 +17,6 @@ struct MYPROJ2_API FSavedInventory
 	TArray<FItemInstance> Items;
 };
 
-/** Items and cash staged in the base, ready to be consumed by the next local raid. */
-USTRUCT(BlueprintType)
-struct MYPROJ2_API FPreparedRaidLoadout
-{
-	GENERATED_BODY()
-
-	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Profile")
-	FSavedInventory Inventory;
-
-	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Profile")
-	int64 Currency = 0;
-};
-
 /** Server-confirmed result delivered to the owning local profile after a raid ends. */
 USTRUCT(BlueprintType)
 struct MYPROJ2_API FRaidSettlementPayload

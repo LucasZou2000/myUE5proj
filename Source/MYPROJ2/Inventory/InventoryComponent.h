@@ -51,7 +51,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Inventory|Debug")
 	bool bSeedTestItems = false;
 
-	/** Test items granted on Server when bSeedTestItems is true. */
+	/** Legacy debug seed configuration; grant explicitly through DebugGrantSeedItems. */
 	UPROPERTY(EditAnywhere, Category = "Inventory|Debug", meta = (EditCondition = "bSeedTestItems"))
 	TArray<TObjectPtr<UItemDefinition>> SeedItems;
 

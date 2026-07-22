@@ -53,18 +53,10 @@ void UInventoryComponent::BeginPlay()
 
 	ReplicatedItems.SetOwner(this);
 
-	AActor* Owner = GetOwner();
-	if (Owner && Owner->HasAuthority() && bSeedTestItems)
-	{
-		for (TObjectPtr<UItemDefinition>& Def : SeedItems)
-		{
-			if (Def)
-			{
-				const int32 GrantQty = FMath::Max(1, Def->MaxStack);
-				AuthorityTryAdd(Def, GrantQty);
-			}
-		}
-	}
+	// Default seed items are intentionally not granted during BeginPlay. The
+	// player's current carry is restored from the profile during PostLogin;
+	// automatic seeding here would overwrite or contaminate that state in PIE.
+	// Use DebugGrantSeedItems explicitly when test loot is needed.
 }
 
 void UInventoryComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

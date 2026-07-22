@@ -4,7 +4,7 @@ Depends on: M4 accepted and `gameplay-contracts.json`.
 
 ## Objective
 
-Implement one local player profile, persistent 5x20 stash, currency, save versioning, and a minimal preparation screen. This implementation also provides a **Standalone-only** extraction/death settlement bridge so the requested prepare -> raid -> settle loop can be tested before M8.
+Implement one local player profile, persistent 5x20 stash, current carried inventory, currency, save versioning, and a minimal base screen. This implementation also provides a **Standalone-only** extraction/death settlement bridge so the requested base -> raid -> settle loop can be tested before M8.
 
 ## Trust boundary
 
@@ -54,13 +54,13 @@ public:
     UPROPERTY(SaveGame) FGuid ProfileId;
     UPROPERTY(SaveGame) int64 SaveGeneration = 0;
     UPROPERTY(SaveGame) FSavedInventory Stash;
-    UPROPERTY(SaveGame) FPreparedRaidLoadout PreparedLoadout;
-    UPROPERTY(SaveGame) FPreparedRaidLoadout PendingRaidLoadout;
+    UPROPERTY(SaveGame) FSavedInventory CurrentInventory;
+    UPROPERTY(SaveGame) int64 CurrentCurrency;
     UPROPERTY(SaveGame) int64 StashCurrency = 0;
 };
 ```
 
-`Stash.GridSize` is fixed to **5x20**. `PreparedLoadout` is a local 10x6 raid loadout and has separate `Currency`; it becomes `PendingRaidLoadout` immediately before map travel. Do not serialize Fast Array replication metadata, Actor pointers, widgets, DataAsset pointers, or transient raid Controllers. Validate every item definition and grid placement after load; invalid entries are dropped with a log and do not crash profile loading.
+`Stash.GridSize` is fixed to **5x20**. `CurrentInventory` and `CurrentCurrency` are the player's second and only other gameplay inventory state. They are persisted before level travel and restored after travel; there is no separate preparation/loadout inventory or handoff gameplay object. Do not serialize Fast Array replication metadata, Actor pointers, widgets, DataAsset pointers, or transient raid Controllers. Validate every item definition and grid placement after load; invalid entries are dropped with a log and do not crash profile loading.
 
 ## Profile subsystem
 
@@ -88,11 +88,11 @@ All future migrations are explicit `Version N -> N+1` functions. Never silently 
 
 ## Current Base Flow
 
-`UBaseStashWidget` is native and intentionally simple: warehouse summary, loadout summary, `TAKE ALL`, `STORE ALL`, `ENTER RAID`, and close. It does not own any state. `OpenBaseStash` opens it from the console until a menu binding exists.
+`UBaseStashWidget` is native and intentionally simple: warehouse summary, current-carry summary, `TAKE ALL`, `STORE ALL`, `ENTER RAID`, and close. It does not own any state. `OpenBaseStash` opens it from the console until a menu binding exists.
 
 `TAKE ALL` / `STORE ALL` stage complete item and currency moves first. If the destination grid cannot hold every stack, neither side changes. `UProfileSubsystem::MoveItem` remains available for later single-stack/drag UI.
 
-`ENTER RAID` moves the prepared loadout into crash-safe pending state, saves it, then travels to `L_Test_Network`. The Standalone GameMode consumes the pending loadout into the Server-owned raid inventory. On `DebugExtract` (temporary M8 bridge), Server transfers all carried items and currency into `FRaidSettlementPayload`, clears the raid state, and the owner profile merges it into stash. `UHealthComponent` calls the equivalent death path on zero health, which clears carried items/currency and writes no reward.
+`ENTER RAID` saves the current carried inventory/currency, then travels to `L_Test_Network`. The Standalone GameMode restores that same current state into the Server-owned raid inventory. On `DebugExtract` (temporary M8 bridge), Server transfers all carried items and currency into `FRaidSettlementPayload`, clears the raid state, and the owner profile merges it into stash. `UHealthComponent` calls the equivalent death path on zero health, which clears carried items/currency and writes no reward.
 
 ## MCP assets
 
@@ -103,15 +103,15 @@ All future migrations are explicit `Version N -> N+1` functions. Never silently 
 
 1. Add save DTOs, version constants, validation, and migration.
 2. Add ProfileSubsystem with primary/backup load/save and atomic inventory/currency moves.
-3. Add Standalone loadout handoff plus Server-owned extraction/death settlement.
+3. Add level-travel current-inventory persistence plus Server-owned extraction/death settlement.
 4. Create the native debug base screen and validate cold restart.
 
 ## Acceptance criteria
 
 - Missing profile creates a valid version-2 profile with stable ProfileId.
-- 5x20 stash positions, quantities, prepared loadout, and both currencies survive restart.
+- 5x20 stash positions, current-carry positions, quantities, and both currencies survive restart.
 - Invalid/corrupt primary uses backup or fails explicitly; it never silently overwrites the only recoverable file.
-- Full transfer into an undersized loadout changes neither inventory or currency.
+- Full transfer into an undersized destination changes neither inventory nor currency.
 - Extraction merges items/currency into stash once; death clears raid inventory/currency without a stash reward.
 - Running the base flow never replicates SaveGame data. The only network data is the Server-confirmed settlement payload.
 
