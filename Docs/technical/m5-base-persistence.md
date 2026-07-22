@@ -94,6 +94,8 @@ All future migrations are explicit `Version N -> N+1` functions. Never silently 
 
 `ENTER RAID` saves the current carried inventory/currency, then travels to `L_Test_Network`. The Standalone GameMode restores that same current state into the Server-owned raid inventory. On `DebugExtract` (temporary M8 bridge), Server transfers all carried items and currency into `FRaidSettlementPayload`, clears the raid state, and the owner profile merges it into stash. `UHealthComponent` calls the equivalent death path on zero health, which clears carried items/currency and writes no reward.
 
+The profile's current-carry fields represent the last saved pre-raid state. Base `TAKE ALL` / `STORE ALL` updates them immediately; raid loot and movement are runtime-only. Exiting the process during a raid therefore preserves the pre-raid carry, while death explicitly clears it and extraction settles it into the stash.
+
 ## MCP assets
 
 - Native `UBaseStashWidget`; no Widget Blueprint or base map is required for this slice.

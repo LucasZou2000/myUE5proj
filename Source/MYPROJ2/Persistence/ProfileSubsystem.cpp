@@ -328,12 +328,17 @@ bool UProfileSubsystem::MoveAllStashToInventory(UInventoryComponent* Inventory, 
 		return false;
 	}
 	Profile->Stash = MoveTemp(StagedStash);
+	Profile->CurrentInventory = StagedInventory;
+	Profile->CurrentInventory.GridSize = Inventory->GetGridSize();
 	InOutCarriedCurrency += Profile->StashCurrency;
+	Profile->CurrentCurrency = InOutCarriedCurrency;
 	Profile->StashCurrency = 0;
 	if (!SaveProfile())
 	{
 		Profile->Stash = MoveTemp(PreviousStash);
+		Profile->CurrentInventory = PreviousInventory;
 		Profile->StashCurrency = PreviousStashCurrency;
+		Profile->CurrentCurrency = PreviousCarriedCurrency;
 		InOutCarriedCurrency = PreviousCarriedCurrency;
 		Inventory->AuthorityReplaceAll(PreviousInventory.Items, Reason);
 		return false;
@@ -368,13 +373,18 @@ bool UProfileSubsystem::MoveAllInventoryToStash(UInventoryComponent* Inventory, 
 		return false;
 	}
 	Profile->Stash = MoveTemp(StagedStash);
+	Profile->CurrentInventory = FSavedInventory();
+	Profile->CurrentInventory.GridSize = Inventory->GetGridSize();
 	Profile->StashCurrency += InOutCarriedCurrency;
+	Profile->CurrentCurrency = 0;
 	InOutCarriedCurrency = 0;
 	Inventory->AuthorityClearAll();
 	if (!SaveProfile())
 	{
 		Profile->Stash = MoveTemp(PreviousStash);
+		Profile->CurrentInventory = PreviousInventory;
 		Profile->StashCurrency = PreviousStashCurrency;
+		Profile->CurrentCurrency = PreviousCarriedCurrency;
 		InOutCarriedCurrency = PreviousCarriedCurrency;
 		EInventoryRejectReason Reason = EInventoryRejectReason::None;
 		Inventory->AuthorityReplaceAll(PreviousInventory.Items, Reason);
