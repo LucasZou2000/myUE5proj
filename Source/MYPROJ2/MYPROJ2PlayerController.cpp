@@ -303,24 +303,35 @@ void AMYPROJ2PlayerController::DebugInstallWeaponPart(int32 Slot)
 	{
 		return;
 	}
-	AMYPROJ2CharacterBase* RaidCharacter = Cast<AMYPROJ2CharacterBase>(GetPawn());
-	UCombatComponent* Combat = RaidCharacter ? RaidCharacter->FindComponentByClass<UCombatComponent>() : nullptr;
-	UInventoryComponent* Inventory = GetInventoryComponent();
-	if (!Combat || !Inventory)
+	ServerDebugInstallWeaponPart(Slot);
+}
+
+void AMYPROJ2PlayerController::ServerDebugInstallWeaponPart_Implementation(int32 Slot)
+{
+	if (!HasAuthority() || Slot < 0 || Slot > static_cast<int32>(EWeaponPartSlot::Optic))
 	{
 		return;
 	}
-	const EWeaponPartSlot RequestedSlot = static_cast<EWeaponPartSlot>(Slot);
-	for (const FReplicatedInventoryEntry& Entry : Inventory->GetEntries())
+	AMYPROJ2CharacterBase* RaidCharacter = Cast<AMYPROJ2CharacterBase>(GetPawn());
+	UCombatComponent* Combat = RaidCharacter ? RaidCharacter->FindComponentByClass<UCombatComponent>() : nullptr;
+	if (!Combat || !InventoryComponent)
 	{
-		if (const UWeaponPartDefinition* Part = Cast<UWeaponPartDefinition>(Inventory->ResolveDefinition(Entry.Item.DefinitionId));
+		UE_LOG(LogMYPROJ2Combat, Warning, TEXT("DebugInstallWeaponPart: missing server combat or inventory component"));
+		return;
+	}
+	const EWeaponPartSlot RequestedSlot = static_cast<EWeaponPartSlot>(Slot);
+	for (const FReplicatedInventoryEntry& Entry : InventoryComponent->GetEntries())
+	{
+		if (const UWeaponPartDefinition* Part = Cast<UWeaponPartDefinition>(InventoryComponent->ResolveDefinition(Entry.Item.DefinitionId));
 			Part && Part->Slot == RequestedSlot && Entry.Item.Quantity == 1)
 		{
-			Combat->ServerInstallPart(Entry.Item.InstanceId, RequestedSlot, Combat->AllocateAssemblyRequestId());
+			UE_LOG(LogMYPROJ2Combat, Log, TEXT("DebugInstallWeaponPart: server selected %s (%s)"),
+				*Entry.Item.InstanceId.ToString(), *Entry.Item.DefinitionId.ToString());
+			Combat->ServerInstallPart_Implementation(Entry.Item.InstanceId, RequestedSlot, Combat->AllocateAssemblyRequestId());
 			return;
 		}
 	}
-	UE_LOG(LogMYPROJ2Combat, Warning, TEXT("DebugInstallWeaponPart: no matching part in inventory for slot %d"), Slot);
+	UE_LOG(LogMYPROJ2Combat, Warning, TEXT("DebugInstallWeaponPart: server inventory has no matching part for slot %d"), Slot);
 }
 
 void AMYPROJ2PlayerController::DebugRemoveWeaponPart(int32 Slot)
@@ -329,11 +340,20 @@ void AMYPROJ2PlayerController::DebugRemoveWeaponPart(int32 Slot)
 	{
 		return;
 	}
+	ServerDebugRemoveWeaponPart(Slot);
+}
+
+void AMYPROJ2PlayerController::ServerDebugRemoveWeaponPart_Implementation(int32 Slot)
+{
+	if (!HasAuthority() || Slot < 0 || Slot > static_cast<int32>(EWeaponPartSlot::Optic))
+	{
+		return;
+	}
 	if (AMYPROJ2CharacterBase* RaidCharacter = Cast<AMYPROJ2CharacterBase>(GetPawn()))
 	{
 		if (UCombatComponent* Combat = RaidCharacter->FindComponentByClass<UCombatComponent>())
 		{
-			Combat->ServerRemovePart(static_cast<EWeaponPartSlot>(Slot), Combat->AllocateAssemblyRequestId());
+			Combat->ServerRemovePart_Implementation(static_cast<EWeaponPartSlot>(Slot), Combat->AllocateAssemblyRequestId());
 		}
 	}
 }
@@ -348,6 +368,24 @@ void AMYPROJ2PlayerController::DebugWeaponStats()
 			UE_LOG(LogMYPROJ2Combat, Log, TEXT("M6 weapon stats: damage=%.2f interval=%.3f range=%.0f spread=%.2f noise=%.0f mag=%d parts=%d"),
 				Stats.Damage, Stats.FireIntervalSeconds, Stats.RangeCm, Stats.SpreadDegrees,
 				Stats.NoiseRadiusCm, Stats.MagazineSize, Combat->GetInstalledParts().Num());
+		}
+	}
+}
+
+void AMYPROJ2PlayerController::DebugWeaponInventory()
+{
+	if (!IsLocalPlayerController())
+	{
+		return;
+	}
+	UE_LOG(LogMYPROJ2Combat, Log, TEXT("M6 inventory entries: %d"), InventoryComponent ? InventoryComponent->GetEntries().Num() : 0);
+	if (InventoryComponent)
+	{
+		for (const FReplicatedInventoryEntry& Entry : InventoryComponent->GetEntries())
+		{
+			UE_LOG(LogMYPROJ2Combat, Log, TEXT("M6 inventory item: instance=%s definition=%s quantity=%d position=(%d,%d)"),
+				*Entry.Item.InstanceId.ToString(), *Entry.Item.DefinitionId.ToString(), Entry.Item.Quantity,
+				Entry.Item.GridPosition.X, Entry.Item.GridPosition.Y);
 		}
 	}
 }

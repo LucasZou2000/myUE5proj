@@ -107,11 +107,20 @@ public:
 	UFUNCTION(Exec)
 	void DebugInstallWeaponPart(int32 Slot);
 
+	UFUNCTION(Server, Reliable)
+	void ServerDebugInstallWeaponPart(int32 Slot);
+
 	UFUNCTION(Exec)
 	void DebugRemoveWeaponPart(int32 Slot);
 
+	UFUNCTION(Server, Reliable)
+	void ServerDebugRemoveWeaponPart(int32 Slot);
+
 	UFUNCTION(Exec)
 	void DebugWeaponStats();
+
+	UFUNCTION(Exec)
+	void DebugWeaponInventory();
 
 	UFUNCTION(Exec)
 	void DebugGrantWeaponTestParts();

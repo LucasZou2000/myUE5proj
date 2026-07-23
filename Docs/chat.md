@@ -360,3 +360,23 @@ Remaining:
 Next:
 
 - In Standalone PIE, run `DebugGrantWeaponTestParts`, `DebugWeaponStats`, `DebugInstallWeaponPart 0`, `DebugWeaponStats`, `DebugInstallWeaponPart 1`, `DebugWeaponStats`, `DebugRemoveWeaponPart 0`, and `DebugWeaponStats`; verify inventory identity/attributes from the log. Then repeat the relevant checks in Listen Server + client PIE if needed.
+
+## 2026-07-23 - Agent - M6 / inventory-authority correction
+
+Status: PARTIAL (Live Coding passed; manual inventory transfer regression pending).
+
+Changed:
+
+- `MYPROJ2PlayerController`: debug install/remove commands now route through Server RPCs and select parts from the Server inventory, never from a potentially stale client inventory view.
+- Added `DebugWeaponInventory`, which logs each replicated inventory instance ID, definition ID, quantity, and grid position.
+
+Validation:
+
+- UE 5.8 Live Coding: `Result: Success`.
+
+Manual check:
+
+1. Run `DebugWeaponInventory`, then `DebugInstallWeaponPart 0` without granting parts. Stats must not change and the log must say the Server inventory has no matching part.
+2. Run `DebugGrantWeaponTestParts`, then `DebugWeaponInventory`; both `Part_TestBarrel` and `Part_TestStock` must be present.
+3. Run `DebugInstallWeaponPart 0` and `DebugWeaponInventory`; only the stock entry remains and stats change once.
+4. Run `DebugRemoveWeaponPart 0` and `DebugWeaponInventory`; the original barrel instance ID must return and both entries must be present again.
